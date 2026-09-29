@@ -450,6 +450,7 @@ export default function App() {
         {/* Selected Project Detail Modal */}
         <ProjectDetailModal
           project={selectedProject}
+          inventory={inventory}
           isOpen={isDetailModalOpen}
           onClose={() => setIsDetailModalOpen(false)}
           onSaveUpdate={handleSaveProject}

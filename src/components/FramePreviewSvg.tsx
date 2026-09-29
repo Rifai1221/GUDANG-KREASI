@@ -8,7 +8,8 @@ import {
   DoorInfillType, 
   DoorHandleType, 
   DoorHandlePosition, 
-  DoorHandleColor 
+  DoorHandleColor,
+  WindowLeafType
 } from '../types';
 import { Download, Eye, Maximize2, Compass, Ruler, Calculator, Sparkles, Layers } from 'lucide-react';
 

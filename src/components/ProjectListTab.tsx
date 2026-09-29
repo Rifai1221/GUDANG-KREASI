@@ -16,6 +16,7 @@ import {
   Eye,
   Copy,
   Layers,
+  Edit3,
 } from 'lucide-react';
 
 interface ProjectListTabProps {
@@ -187,18 +188,26 @@ export const ProjectListTab: React.FC<ProjectListTabProps> = ({
                   </div>
 
                   {/* Action Buttons */}
-                  <div className="grid grid-cols-3 gap-2 pt-1">
+                  <div className="grid grid-cols-4 gap-1.5 pt-1">
                     <button
                       onClick={() => onSelectProject(project)}
-                      className="flex items-center justify-center gap-1 py-2 px-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition"
-                      title="Lihat Detail & Edit RAB"
+                      className="flex items-center justify-center gap-1 py-2 px-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-[11px] font-extrabold transition shadow-md shadow-amber-500/20"
+                      title="Edit Pesanan & RAB Proyek Ini"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" /> Edit
+                    </button>
+
+                    <button
+                      onClick={() => onSelectProject(project)}
+                      className="flex items-center justify-center gap-1 py-2 px-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-semibold transition"
+                      title="Lihat Detail RAB"
                     >
                       <Eye className="w-3.5 h-3.5" /> Detail
                     </button>
 
                     <button
                       onClick={() => generateProjectPdf(project)}
-                      className="flex items-center justify-center gap-1 py-2 px-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-xs font-bold transition"
+                      className="flex items-center justify-center gap-1 py-2 px-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[11px] font-bold transition"
                       title="Download PDF RAB"
                     >
                       <Download className="w-3.5 h-3.5" /> PDF
@@ -206,7 +215,7 @@ export const ProjectListTab: React.FC<ProjectListTabProps> = ({
 
                     <button
                       onClick={() => onDeleteProject(project.id)}
-                      className="flex items-center justify-center gap-1 py-2 px-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-xs font-semibold transition"
+                      className="flex items-center justify-center gap-1 py-2 px-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-[11px] font-semibold transition"
                       title="Hapus Proyek"
                     >
                       <Trash2 className="w-3.5 h-3.5" /> Hapus
