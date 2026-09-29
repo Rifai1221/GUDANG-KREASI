@@ -187,6 +187,45 @@ export async function savePriceHistoryToCloud(log: PriceHistoryLog): Promise<voi
   }
 }
 
+export interface ShopProfile {
+  name: string;
+  tagline?: string;
+  address: string;
+  phone?: string;
+}
+
+const LOCAL_SHOP_PROFILE_KEY = 'gudangkreasi_shop_profile_v1';
+
+export const DEFAULT_SHOP_PROFILE: ShopProfile = {
+  name: 'GUDANG KREASI ALUMUNIUM',
+  tagline: 'Garasi Alumunium — Original Hand Made',
+  address: 'Jl. Raya Garasi Alumunium No. 88, Workshop & Fabrikasi Kusen Alumunium',
+  phone: '0812-3456-7890',
+};
+
+export function getLocalShopProfile(): ShopProfile {
+  try {
+    const raw = localStorage.getItem(LOCAL_SHOP_PROFILE_KEY);
+    if (!raw) {
+      localStorage.setItem(LOCAL_SHOP_PROFILE_KEY, JSON.stringify(DEFAULT_SHOP_PROFILE));
+      return DEFAULT_SHOP_PROFILE;
+    }
+    return JSON.parse(raw);
+  } catch (e) {
+    console.error('Error reading shop profile', e);
+    return DEFAULT_SHOP_PROFILE;
+  }
+}
+
+export function saveLocalShopProfile(profile: ShopProfile) {
+  try {
+    localStorage.setItem(LOCAL_SHOP_PROFILE_KEY, JSON.stringify(profile));
+    window.dispatchEvent(new CustomEvent('shop-profile-updated', { detail: profile }));
+  } catch (e) {
+    console.error('Error saving shop profile', e);
+  }
+}
+
 export function subscribeToUserProjects(
   userId: string,
   onData: (projects: Project[]) => void,

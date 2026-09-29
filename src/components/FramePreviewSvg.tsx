@@ -20,6 +20,11 @@ interface FramePreviewProps {
   windowHeightMm?: number;
   title?: string;
   className?: string;
+  defaultViewMode?: 'cad' | 'render3d';
+  controlledViewMode?: 'cad' | 'render3d';
+  hideToolbar?: boolean;
+  hideFooter?: boolean;
+  compact?: boolean;
 }
 
 export const FramePreviewSvg: React.FC<FramePreviewProps> = ({
@@ -40,12 +45,19 @@ export const FramePreviewSvg: React.FC<FramePreviewProps> = ({
   windowHeightMm = 1350,
   title = 'KUSEN TIPE 1',
   className = '',
+  defaultViewMode = 'render3d',
+  controlledViewMode,
+  hideToolbar = false,
+  hideFooter = false,
+  compact = false,
 }) => {
   // View mode: 'cad' (Technical shop drawing like uploaded blueprint) or 'render3d' (Photorealistic shaded)
-  const [viewMode, setViewMode] = useState<'cad' | 'render3d'>('cad');
+  const [internalViewMode, setInternalViewMode] = useState<'cad' | 'render3d'>(defaultViewMode);
+  const viewMode = controlledViewMode !== undefined ? controlledViewMode : internalViewMode;
+  const setViewMode = setInternalViewMode;
   const [showDimensions, setShowDimensions] = useState<boolean>(true);
-  const [showFloorPlan, setShowFloorPlan] = useState<boolean>(true);
-  const [showFormula, setShowFormula] = useState<boolean>(true);
+  const [showFloorPlan, setShowFloorPlan] = useState<boolean>(!compact);
+  const [showFormula, setShowFormula] = useState<boolean>(!compact);
   const svgRef = useRef<SVGSVGElement | null>(null);
 
   // Profile dimensions in mm & cm
@@ -56,13 +68,12 @@ export const FramePreviewSvg: React.FC<FramePreviewProps> = ({
 
   // SVG Canvas dimensions and coordinate system
   const canvasW = 760;
-  const canvasH = 1000;
 
   // Drawing origin & scale calculation
   const paddingX = 90;
-  const paddingTop = 95;
+  const paddingTop = 118;
   const drawingMaxW = 540;
-  const drawingMaxH = 500;
+  const drawingMaxH = compact ? 390 : 490;
 
   // Layout calculations
   const effectiveDoorWidthMm = type === 'kusen_pintu_jendela_gabungan' 
@@ -90,6 +101,10 @@ export const FramePreviewSvg: React.FC<FramePreviewProps> = ({
 
   const originX = paddingX + (drawingMaxW - svgFrameW) / 2;
   const originY = paddingTop + (hasTopBoven ? (topBovenHeightMm * scale) + 18 : 0);
+
+  const canvasH = compact
+    ? Math.max(480, Math.round(originY + svgFrameH + (showDimensions ? 75 : 35)))
+    : 1000;
 
   // --- COLOR SYSTEM MAPPING ---
   const getColorPalette = () => {
@@ -325,69 +340,71 @@ export const FramePreviewSvg: React.FC<FramePreviewProps> = ({
     <div className={`flex flex-col bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden ${className}`}>
       
       {/* Top Interactive Controls Toolbar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-slate-950 border-b border-slate-800 text-xs">
-        <div className="flex items-center gap-2">
-          {/* CAD Blueprint vs 3D Render Switcher */}
-          <div className="flex items-center bg-slate-900 p-0.5 rounded-xl border border-slate-800">
-            <button
-              onClick={() => setViewMode('cad')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition ${
-                viewMode === 'cad'
-                  ? 'bg-amber-500 text-slate-950 shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Compass className="w-3.5 h-3.5" />
-              <span>Shop Drawing CAD</span>
-            </button>
-            <button
-              onClick={() => setViewMode('render3d')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition ${
-                viewMode === 'render3d'
-                  ? 'bg-amber-500 text-slate-950 shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Render 3D Material</span>
-            </button>
+      {!hideToolbar && (
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-slate-950 border-b border-slate-800 text-xs">
+          <div className="flex items-center gap-2">
+            {/* CAD Blueprint vs 3D Render Switcher */}
+            <div className="flex items-center bg-slate-900 p-0.5 rounded-xl border border-slate-800">
+              <button
+                onClick={() => setViewMode('cad')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition ${
+                  viewMode === 'cad'
+                    ? 'bg-amber-500 text-slate-950 shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Compass className="w-3.5 h-3.5" />
+                <span>Shop Drawing CAD</span>
+              </button>
+              <button
+                onClick={() => setViewMode('render3d')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition ${
+                  viewMode === 'render3d'
+                    ? 'bg-amber-500 text-slate-950 shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Render 3D Material</span>
+              </button>
+            </div>
+
+            {/* Color Indicator Badge */}
+            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-[11px] font-semibold text-slate-300">
+              <span
+                className="w-3 h-3 rounded-full border border-white/20 shadow-sm"
+                style={{ backgroundColor: palette.frameFill }}
+              />
+              <span>{color.split(' ')[0]}</span>
+            </div>
           </div>
 
-          {/* Color Indicator Badge */}
-          <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-[11px] font-semibold text-slate-300">
-            <span
-              className="w-3 h-3 rounded-full border border-white/20 shadow-sm"
-              style={{ backgroundColor: palette.frameFill }}
-            />
-            <span>{color.split(' ')[0]}</span>
+          {/* View toggles & SVG Export */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowDimensions(!showDimensions)}
+              className={`px-2.5 py-1.5 rounded-lg border text-[11px] font-bold transition flex items-center gap-1 ${
+                showDimensions
+                  ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                  : 'bg-slate-900 text-slate-500 border-slate-800'
+              }`}
+              title="Tampilkan / Sembunyikan Garis Ukuran"
+            >
+              <Ruler className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">Garis Ukuran</span>
+            </button>
+
+            <button
+              onClick={handleDownloadSvg}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold transition text-xs shadow-sm"
+              title="Download Gambar CAD Format SVG"
+            >
+              <Download className="w-3.5 h-3.5 text-amber-400" />
+              <span>Unduh CAD (.SVG)</span>
+            </button>
           </div>
         </div>
-
-        {/* View toggles & SVG Export */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowDimensions(!showDimensions)}
-            className={`px-2.5 py-1.5 rounded-lg border text-[11px] font-bold transition flex items-center gap-1 ${
-              showDimensions
-                ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
-                : 'bg-slate-900 text-slate-500 border-slate-800'
-            }`}
-            title="Tampilkan / Sembunyikan Garis Ukuran"
-          >
-            <Ruler className="w-3.5 h-3.5" />
-            <span className="hidden md:inline">Garis Ukuran</span>
-          </button>
-
-          <button
-            onClick={handleDownloadSvg}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold transition text-xs shadow-sm"
-            title="Download Gambar CAD Format SVG"
-          >
-            <Download className="w-3.5 h-3.5 text-amber-400" />
-            <span>Unduh CAD (.SVG)</span>
-          </button>
-        </div>
-      </div>
+      )}
 
       {/* SVG Canvas Board */}
       <div className={`relative flex items-center justify-center p-4 overflow-x-auto ${
@@ -447,28 +464,76 @@ export const FramePreviewSvg: React.FC<FramePreviewProps> = ({
             <rect x="12" y="12" width={canvasW - 24} height={canvasH - 24} fill="url(#cadGrid)" opacity="0.6" />
           )}
 
-          {/* TOP ARCHITECTURAL TITLE BOX (Exact like reference drawing: "1. KUSEN TIPE PJ 1 ( PINTU JENDELA 1 )") */}
-          <g>
+          {/* TOP ARCHITECTURAL TITLE BOX */}
+          <g id="drawingTitleBox">
+            {/* Header Outer Container */}
             <rect
-              x="24"
-              y="22"
-              width="360"
-              height="36"
+              x="20"
+              y="16"
+              width={canvasW - 40}
+              height="50"
               fill={viewMode === 'cad' ? '#FFFFFF' : '#141A23'}
               stroke="#1E293B"
               strokeWidth="1.5"
+              rx="4"
+            />
+            {/* Left Accent Stripe */}
+            <rect
+              x="20"
+              y="16"
+              width="5"
+              height="50"
+              fill="#F59E0B"
               rx="2"
             />
+
+            {/* Line 1: Unit Name / Title */}
             <text
               x="36"
-              y="45"
+              y="36"
               fontSize="13"
               fontFamily="sans-serif"
               fontWeight="800"
               fill={viewMode === 'cad' ? '#0F172A' : '#F8FAFC'}
-              letterSpacing="0.5"
+              letterSpacing="0.4"
             >
-              1. {title.toUpperCase()} ( {brand.toUpperCase()} {profileSize} )
+              {title.toUpperCase()}
+            </text>
+
+            {/* Line 2: Specification & Profile Details (Neatly separated sub-line) */}
+            <text
+              x="36"
+              y="54"
+              fontSize="10"
+              fontFamily="sans-serif"
+              fontWeight="600"
+              fill={viewMode === 'cad' ? '#475569' : '#94A3B8'}
+            >
+              PROFIL: {brand.toUpperCase()} {profileSize} &nbsp;•&nbsp; WARNA: {color.split(' ')[0].toUpperCase()} &nbsp;•&nbsp; KACA: {glassType.toUpperCase()}
+            </text>
+
+            {/* Right Side Dimension Info Badge */}
+            <text
+              x={canvasW - 32}
+              y="36"
+              fontSize="11.5"
+              fontFamily="monospace"
+              fontWeight="700"
+              textAnchor="end"
+              fill={viewMode === 'cad' ? '#0F172A' : '#F8FAFC'}
+            >
+              {totalWidthCm} x {totalHeightCm} CM
+            </text>
+            <text
+              x={canvasW - 32}
+              y="54"
+              fontSize="9.5"
+              fontFamily="monospace"
+              fontWeight="500"
+              textAnchor="end"
+              fill={viewMode === 'cad' ? '#64748B' : '#94A3B8'}
+            >
+              ({widthMm} x {heightMm} mm)
             </text>
           </g>
 
@@ -1325,26 +1390,28 @@ export const FramePreviewSvg: React.FC<FramePreviewProps> = ({
       </div>
 
       {/* Bottom Summary Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 bg-slate-950 border-t border-slate-800 text-xs">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="font-bold text-slate-300">Spesifikasi Profil:</span>
-          <span className="px-2 py-0.5 rounded bg-slate-800 text-amber-400 font-mono font-bold border border-slate-700">
-            {profileSize} • {brand}
-          </span>
-          <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-200 border border-slate-700">
-            Warna: <strong style={{ color: palette.isDark ? '#F8FAFC' : '#F59E0B' }}>{color.split(' ')[0]}</strong>
-          </span>
-          <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
-            Kaca: {glassType}
-          </span>
-        </div>
+      {!hideFooter && (
+        <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 bg-slate-950 border-t border-slate-800 text-xs">
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-slate-300">Spesifikasi Profil:</span>
+            <span className="px-2 py-0.5 rounded bg-slate-800 text-amber-400 font-mono font-bold border border-slate-700">
+              {profileSize} • {brand}
+            </span>
+            <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-200 border border-slate-700">
+              Warna: <strong style={{ color: palette.isDark ? '#F8FAFC' : '#F59E0B' }}>{color.split(' ')[0]}</strong>
+            </span>
+            <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
+              Kaca: {glassType}
+            </span>
+          </div>
 
-        <div className="text-right">
-          <span className="text-[11px] text-slate-400 block font-mono">
-            Ukuran: <strong className="text-emerald-400">{widthMm} x {heightMm} mm</strong> ({totalWidthCm} x {totalHeightCm} cm)
-          </span>
+          <div className="text-right">
+            <span className="text-[11px] text-slate-400 block font-mono">
+              Ukuran: <strong className="text-emerald-400">{widthMm} x {heightMm} mm</strong> ({totalWidthCm} x {totalHeightCm} cm)
+            </span>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

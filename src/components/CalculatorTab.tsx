@@ -417,7 +417,7 @@ export const CalculatorTab: React.FC<CalculatorTabProps> = ({
       taxAmount: 0,
       grandTotal: grandTotalEstimate,
       estimatedProductionDays: Math.ceil(itemList.reduce((s, i) => s + i.perimeterMeters, 0) / 15) + 1,
-      notes: 'RAB dibuat dengan kalkulator GudangKreasi.',
+      notes: '',
       paymentTerms: 'DP 50% saat persetujuan SPK, Pelunasan 50% setelah pemasangan selesai.',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
