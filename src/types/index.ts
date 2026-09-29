@@ -14,6 +14,41 @@ export type AluminumColor = 'White (Putih)' | 'Black (Hitam)' | 'Brown (Cokelat)
 
 export type GlassType = 'Polos 5mm' | 'Polos 6mm' | 'Rayban 5mm' | 'Es / Frosted 5mm' | 'Tempered 8mm' | 'Tempered 10mm' | 'Tanpa Kaca';
 
+export type DoorHandleType = 
+  | 'lever' 
+  | 'pull_60' 
+  | 'pull_80' 
+  | 'pull_100' 
+  | 'pull_120' 
+  | 'flush' 
+  | 'smart_lock' 
+  | 'knob';
+
+export type DoorHandlePosition = 
+  | 'right' 
+  | 'left' 
+  | 'center_pair'
+  | 'kiri-kiri' 
+  | 'kiri-kanan' 
+  | 'kanan-kiri' 
+  | 'kanan-kanan' 
+  | 'none';
+export type DoorHandleColor = 'stainless' | 'black' | 'gold';
+
+export type DoorInfillType = 
+  | 'kaca' 
+  | 'acp_kayu_jati' 
+  | 'acp_kayu_walnut' 
+  | 'acp_kayu_oak' 
+  | 'acp_solid_white' 
+  | 'acp_solid_black' 
+  | 'acp_solid_grey' 
+  | 'acp_solid_brown' 
+  | 'spandrel_alumunium' 
+  | 'jalusi_louver';
+
+export type WindowLeafType = 'open' | 'fixed'; // 'open' = Buka-Tutup (Casement/Swing/Awning), 'fixed' = Kaca Mati
+
 export interface FrameHardware {
   hingesCount: number; // Jumlah Engsel
   lockSetCount: number; // Jumlah Kunci / Handle
@@ -54,6 +89,16 @@ export interface FrameItem {
   doorWidthMm?: number; // Lebar Daun Pintu untuk Tipe PJ (misal 900 mm)
   windowCount?: number; // Jumlah Daun Jendela untuk Tipe PJ (misal 2 daun)
   windowHeightMm?: number; // Tinggi Jendela untuk Tipe PJ (misal 1350 mm)
+
+  // Smart Door & Handle Infill Configuration
+  doorInfillType?: DoorInfillType;
+  handleType?: DoorHandleType;
+  handlePosition?: DoorHandlePosition;
+  handleColor?: DoorHandleColor;
+  handleHeightMm?: number;
+  
+  // Smart Multi-Leaf Window Configuration
+  windowLeaves?: WindowLeafType[]; // Array e.g. ['open', 'fixed', 'open']
   
   // Custom Manual Price Overrides
   customAluminumBarPrice?: number; // Override manual per batang

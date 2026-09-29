@@ -5,6 +5,10 @@ import {
   AluminumProfile,
   AluminumColor,
   GlassType,
+  DoorInfillType,
+  DoorHandleType,
+  DoorHandlePosition,
+  DoorHandleColor,
   FrameItem,
   InventoryItem,
   MaterialCategory,
@@ -13,10 +17,12 @@ import {
   CustomDoorModel,
   CustomFrameModel,
   DoorPanelStyle,
+  WindowLeafType,
 } from '../types';
 import { calculateFrameCosts, formatRupiah } from '../utils/calculator';
 import { FramePreviewSvg } from './FramePreviewSvg';
 import { CutListModal } from './CutListModal';
+import { parseDesignWithAi, parseDesignRuleBased } from '../services/geminiAiService';
 import {
   getLocalCustomFrameModels,
   saveLocalCustomFrameModels,
@@ -41,6 +47,14 @@ import {
   Compass,
   DoorClosed,
   Grid,
+  LayoutGrid,
+  Wand2,
+  KeyRound,
+  GripHorizontal,
+  ShieldCheck,
+  Send,
+  Loader2,
+  Check,
 } from 'lucide-react';
 
 const DEFAULT_DOOR_MODELS: CustomDoorModel[] = [
@@ -89,8 +103,47 @@ export const CalculatorTab: React.FC<CalculatorTabProps> = ({
   const [doorPanelType, setDoorPanelType] = useState<string>('panil_horizontal');
   const [selectedDoorModelId, setSelectedDoorModelId] = useState<string>('panil_horizontal');
   const [doorWidthMm, setDoorWidthMm] = useState<number>(900);
-  const [windowCount, setWindowCount] = useState<number>(2);
+  const [windowCount, setWindowCount] = useState<number>(3);
   const [windowHeightMm, setWindowHeightMm] = useState<number>(1350);
+  const [windowLeaves, setWindowLeaves] = useState<WindowLeafType[]>(['open', 'fixed', 'open']);
+
+  const handleWindowLeafCountChange = (newCount: number) => {
+    setWindowCount(newCount);
+    setMullionVertical(Math.max(0, newCount - 1));
+
+    setWindowLeaves((prev) => {
+      const nextLeaves: WindowLeafType[] = [];
+      for (let i = 0; i < newCount; i++) {
+        if (prev[i]) {
+          nextLeaves.push(prev[i]);
+        } else {
+          nextLeaves.push((i === 0 || i === newCount - 1) ? 'open' : 'fixed');
+        }
+      }
+      return nextLeaves;
+    });
+  };
+
+  const handleToggleSingleLeaf = (index: number) => {
+    setWindowLeaves((prev) => {
+      const updated = [...prev];
+      updated[index] = updated[index] === 'open' ? 'fixed' : 'open';
+      return updated;
+    });
+  };
+
+  // Smart Door Infill & Handle Configuration
+  const [doorInfillType, setDoorInfillType] = useState<DoorInfillType>('acp_kayu_jati');
+  const [handleType, setHandleType] = useState<DoorHandleType>('pull_80');
+  const [handlePosition, setHandlePosition] = useState<DoorHandlePosition>('right');
+  const [handleColor, setHandleColor] = useState<DoorHandleColor>('stainless');
+  const [handleHeightMm, setHandleHeightMm] = useState<number>(1000);
+
+  // AI Smart Estimator Assistant State
+  const [showAiModal, setShowAiModal] = useState(false);
+  const [aiPromptInput, setAiPromptInput] = useState('');
+  const [isAiLoading, setIsAiLoading] = useState(false);
+  const [aiFeedbackMessage, setAiFeedbackMessage] = useState<string | null>(null);
 
   // Custom User-Defined Frame and Door Models
   const [customDoorModels, setCustomDoorModels] = useState<CustomDoorModel[]>(() => {
@@ -331,6 +384,8 @@ export const CalculatorTab: React.FC<CalculatorTabProps> = ({
   const activeDoorModel = customDoorModels.find((d) => d.id === selectedDoorModelId) || customDoorModels[0];
 
   // Calculate live item preview
+  const openLeavesCount = windowLeaves.filter((l) => l === 'open').length;
+
   const liveCalculatedItem = calculateFrameCosts(
     {
       id: 'temp-item',
@@ -354,13 +409,19 @@ export const CalculatorTab: React.FC<CalculatorTabProps> = ({
       doorWidthMm,
       windowCount,
       windowHeightMm,
+      windowLeaves,
+      doorInfillType,
+      handleType,
+      handlePosition,
+      handleColor,
+      handleHeightMm,
       customAluminumBarPrice: useCustomBarPrice ? customBarPriceInput : undefined,
       customGlassPricePerM2: useCustomGlassPrice ? customGlassPriceInput : undefined,
       hardware: {
         hingesCount: Number(hingesCount) || 0,
-        lockSetCount: Number(lockSetCount) || 0,
+        lockSetCount: (frameType.includes('jendela') || frameType === 'kusen_pintu_jendela_gabungan') ? openLeavesCount : Number(lockSetCount) || 0,
         slotCount: 0,
-        frictionStayCount: Number(frictionStayCount) || 0,
+        frictionStayCount: (frameType.includes('jendela') || frameType === 'kusen_pintu_jendela_gabungan') ? openLeavesCount * 2 : Number(frictionStayCount) || 0,
         sealantMeters: Math.ceil(((widthMm + heightMm) * 2) / 1000),
         rubberMeters: Math.ceil(((widthMm + heightMm) * 2) / 1000),
         screwsSikuSet: 1,
@@ -369,6 +430,53 @@ export const CalculatorTab: React.FC<CalculatorTabProps> = ({
     inventory,
     laborSettings
   );
+
+  const handleApplyAiDesign = async (promptText: string) => {
+    if (!promptText.trim()) return;
+    setIsAiLoading(true);
+    setAiFeedbackMessage(null);
+    try {
+      const result = await parseDesignWithAi(promptText);
+      setFrameName(result.name);
+      setFrameType(result.type);
+      setSelectedModelId(result.type);
+      setWidthMm(result.widthMm);
+      setHeightMm(result.heightMm);
+      setBrand(result.brand);
+      setProfileSize(result.profileSize);
+      setColor(result.color);
+      setGlassType(result.glassType);
+      setHasTopBoven(result.hasTopBoven);
+      if (result.topBovenHeightMm) setTopBovenHeightMm(result.topBovenHeightMm);
+      if (result.doorInfillType) setDoorInfillType(result.doorInfillType);
+      if (result.handleType) setHandleType(result.handleType);
+      if (result.handlePosition) setHandlePosition(result.handlePosition);
+      if (result.handleColor) setHandleColor(result.handleColor);
+      if (result.doorWidthMm) setDoorWidthMm(result.doorWidthMm);
+      if (result.windowHeightMm) setWindowHeightMm(result.windowHeightMm);
+      if (result.windowCount) setWindowCount(result.windowCount);
+
+      setAiFeedbackMessage(result.aiExplanation || 'Konfigurasi desain berhasil diterapkan secara otomatis!');
+      setTimeout(() => {
+        setShowAiModal(false);
+      }, 1200);
+    } catch (err) {
+      console.error(err);
+      // Fallback
+      const fallback = parseDesignRuleBased(promptText);
+      setFrameName(fallback.name);
+      setFrameType(fallback.type);
+      setWidthMm(fallback.widthMm);
+      setHeightMm(fallback.heightMm);
+      setDoorInfillType(fallback.doorInfillType);
+      setHandleType(fallback.handleType);
+      setHandlePosition(fallback.handlePosition);
+      setHandleColor(fallback.handleColor);
+      setShowAiModal(false);
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
 
   const handleAddItem = () => {
     const newItem: FrameItem = {
@@ -442,14 +550,23 @@ export const CalculatorTab: React.FC<CalculatorTabProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* AI Smart Estimator Assistant Button */}
+          <button
+            onClick={() => setShowAiModal(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white text-xs font-extrabold transition shadow-lg shadow-indigo-500/25"
+          >
+            <Wand2 className="w-4 h-4 text-amber-300 animate-pulse" />
+            <span>✨ Desain Cerdas dengan AI</span>
+          </button>
+
           {itemList.length > 0 && (
             <button
               onClick={() => setIsCutListOpen(true)}
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-xs font-bold transition shadow-sm"
             >
               <Scissors className="w-4 h-4" />
-              <span>Optimasi Potong Batang (Cut List)</span>
+              <span>Optimasi Potong (Cut List)</span>
             </button>
           )}
         </div>
@@ -756,45 +873,338 @@ export const CalculatorTab: React.FC<CalculatorTabProps> = ({
                   )}
                 </div>
 
-                {/* Door Panel Type */}
+                {/* Door Panel & Infill Material Selection */}
                 {(frameType.includes('pintu') || frameType === 'kusen_pintu_jendela_gabungan') && (
-                  <div className="bg-slate-900 p-2.5 rounded-lg border border-slate-800 space-y-1">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[11px] font-bold text-slate-300 block">Model Daun Pintu</label>
-                      <button
-                        type="button"
-                        onClick={() => setShowAddDoorModal(true)}
-                        className="text-[10px] font-bold text-amber-400 hover:text-amber-300 flex items-center gap-1 transition"
-                      >
-                        <Plus className="w-3 h-3" /> + Model Pintu
-                      </button>
-                    </div>
-                    <select
-                      value={selectedDoorModelId}
-                      onChange={(e) => {
-                        const dId = e.target.value;
-                        setSelectedDoorModelId(dId);
-                        const matched = customDoorModels.find((d) => d.id === dId);
-                        if (matched) {
-                          setDoorPanelType(matched.panelStyle);
-                        }
-                      }}
-                      className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 font-semibold"
-                    >
-                      {customDoorModels.map((dm) => (
-                        <option key={dm.id} value={dm.id}>
-                          {dm.name} {dm.extraCost ? `(+${formatRupiah(dm.extraCost)})` : ''}
-                        </option>
-                      ))}
-                    </select>
-                    {activeDoorModel && (
-                      <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1">
-                        <span>Gaya: <strong className="text-slate-200 capitalize">{activeDoorModel.panelStyle.replace(/_/g, ' ')}</strong></span>
-                        {activeDoorModel.extraCost ? (
-                          <span className="text-emerald-400 font-mono font-bold">+{formatRupiah(activeDoorModel.extraCost)}/unit</span>
-                        ) : null}
+                  <>
+                    {/* Daun Pintu Material / Infill */}
+                    <div className="bg-slate-900 p-3 rounded-xl border border-slate-800 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                          <DoorClosed className="w-3.5 h-3.5" /> Isian Daun Pintu (ACP / Kaca)
+                        </label>
+                        <span className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded font-mono font-bold">
+                          Tekstur Realistis
+                        </span>
                       </div>
-                    )}
+                      <select
+                        value={doorInfillType}
+                        onChange={(e) => setDoorInfillType(e.target.value as DoorInfillType)}
+                        className="w-full bg-slate-950 border border-amber-500/40 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 font-semibold focus:outline-none focus:border-amber-400"
+                      >
+                        <optgroup label="✨ ACP Motif Kayu (Wood Grain Series)">
+                          <option value="acp_kayu_jati">🪵 ACP Motif Kayu Jati (Golden Teak Wood)</option>
+                          <option value="acp_kayu_walnut">🪵 ACP Motif Kayu Walnut (Dark Chocolate)</option>
+                          <option value="acp_kayu_oak">🪵 ACP Motif Kayu Oak (Natural Blonde Oak)</option>
+                        </optgroup>
+                        <optgroup label="🏢 ACP Solid Modern">
+                          <option value="acp_solid_white">⚪ ACP Solid Putih (White Gloss/Doff)</option>
+                          <option value="acp_solid_black">⚫ ACP Solid Hitam (Black Matte)</option>
+                          <option value="acp_solid_grey">🔘 ACP Solid Abu-Abu (Anthracite Grey)</option>
+                          <option value="acp_solid_brown">🟤 ACP Solid Cokelat (Dark Brown)</option>
+                        </optgroup>
+                        <optgroup label="🪟 Alumunium & Kaca">
+                          <option value="spandrel_alumunium">Spandrel Alumunium Bergaris</option>
+                          <option value="jalusi_louver">Jalusi / Louver Ventilasi Udara</option>
+                          <option value="kaca">Kaca Penuh (Sesuai Pilihan Kaca)</option>
+                        </optgroup>
+                      </select>
+                    </div>
+
+                    {/* Gagang Pintu & Aksesoris Configurator */}
+                    <div className="bg-slate-900 p-3 rounded-xl border border-slate-800 space-y-2.5">
+                      <label className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                        <KeyRound className="w-3.5 h-3.5 text-amber-400" /> Model & Posisi Gagang (Handle)
+                      </label>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        {/* Handle Type */}
+                        <div>
+                          <label className="block text-[10px] text-slate-400 mb-1">Model Handle</label>
+                          <select
+                            value={handleType}
+                            onChange={(e) => setHandleType(e.target.value as DoorHandleType)}
+                            className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 font-medium"
+                          >
+                            <option value="pull_80">Pull Handle 80cm (Populer)</option>
+                            <option value="pull_60">Pull Handle 60cm</option>
+                            <option value="pull_100">Pull Handle 100cm (Mewah)</option>
+                            <option value="pull_120">Pull Handle 120cm (Grand)</option>
+                            <option value="smart_lock">Smart Lock (Digital Keypad)</option>
+                            <option value="lever">Handle Lever Engkol</option>
+                            <option value="flush">Handle Tanam (Sliding)</option>
+                            <option value="knob">Kunci Bulat (Knob)</option>
+                          </select>
+                        </div>
+
+                        {/* Handle Position */}
+                        <div>
+                          <label className="block text-[10px] text-slate-400 mb-1">Posisi Handle</label>
+                          <select
+                            value={handlePosition}
+                            onChange={(e) => setHandlePosition(e.target.value as DoorHandlePosition)}
+                            className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 font-medium"
+                          >
+                            <optgroup label="🚪 Pintu Tunggal (Single Leaf)">
+                              <option value="right">👉 Sisi Kanan (Buka Kiri)</option>
+                              <option value="left">👈 Sisi Kiri (Buka Kanan)</option>
+                            </optgroup>
+                            <optgroup label="🚪🚪 Pintu Ganda (Double Pair)">
+                              <option value="kanan-kiri">↔️ Kanan - Kiri (Berhadapan Tengah)</option>
+                              <option value="kiri-kiri">⬅️ Kiri - Kiri (Kiri Kedua Daun)</option>
+                              <option value="kiri-kanan">↔️ Kiri - Kanan (Luar Kedua Daun)</option>
+                              <option value="kanan-kanan">➡️ Kanan - Kanan (Kanan Kedua Daun)</option>
+                            </optgroup>
+                            <optgroup label="❌ Kustom / Tanpa Gagang">
+                              <option value="none">🚫 Tanpa Handle (Dihapus)</option>
+                            </optgroup>
+                          </select>
+                        </div>
+
+                        {/* Handle Color */}
+                        <div>
+                          <label className="block text-[10px] text-slate-400 mb-1">Finishing Warna</label>
+                          <select
+                            value={handleColor}
+                            onChange={(e) => setHandleColor(e.target.value as DoorHandleColor)}
+                            className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 font-medium"
+                          >
+                            <option value="stainless">Stainless Steel Chrome</option>
+                            <option value="black">Matte Black Doff</option>
+                            <option value="gold">Luxury Titanium Gold</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Handle Height Slider & Quick Controls */}
+                      <div className="pt-2 border-t border-slate-800/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs">
+                        <div className="flex items-center gap-2 w-full sm:w-auto">
+                          <label className="text-[10px] text-slate-400 font-bold whitespace-nowrap">Tinggi Handle:</label>
+                          <input
+                            type="range"
+                            min="400"
+                            max="1600"
+                            step="10"
+                            value={handleHeightMm}
+                            onChange={(e) => setHandleHeightMm(Number(e.target.value))}
+                            className="w-full sm:w-28 accent-amber-500 cursor-pointer"
+                          />
+                          <span className="font-mono text-amber-400 font-bold text-[11px] whitespace-nowrap">
+                            {handleHeightMm} mm ({Math.round(handleHeightMm / 10)} cm)
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setHandleHeightMm(900)}
+                            className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300 font-semibold"
+                          >
+                            90cm
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setHandleHeightMm(1000)}
+                            className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[10px] font-bold border border-amber-500/30"
+                          >
+                            100cm Std
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setHandleHeightMm(1100)}
+                            className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300 font-semibold"
+                          >
+                            110cm
+                          </button>
+                          {handlePosition !== 'none' ? (
+                            <button
+                              type="button"
+                              onClick={() => setHandlePosition('none')}
+                              className="px-2 py-0.5 rounded bg-red-500/20 text-red-300 hover:bg-red-500/30 text-[10px] font-bold border border-red-500/30 flex items-center gap-1 ml-1"
+                              title="Hapus Gagang / Handle dari gambar"
+                            >
+                              🗑️ Hapus
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setHandlePosition('kanan-kiri')}
+                              className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 text-[10px] font-bold border border-emerald-500/30 flex items-center gap-1 ml-1"
+                              title="Pasang kembali Handle"
+                            >
+                              + Pasang
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Flexible Multi-Leaf Window Configurator */}
+                {(frameType.includes('jendela') || frameType === 'kusen_pintu_jendela_gabungan') && (
+                  <div className="bg-slate-900 p-3.5 rounded-xl border border-slate-800 space-y-3">
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                      <label className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                        <LayoutGrid className="w-4 h-4" /> Konfigurasi Daun Jendela Fleksibel
+                      </label>
+                      <span className="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded font-mono font-bold">
+                        {windowLeaves.filter((l) => l === 'open').length} Buka-Tutup • {windowLeaves.filter((l) => l === 'fixed').length} Kaca Mati
+                      </span>
+                    </div>
+
+                    {/* 1. Number of Leaves Selector */}
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-400 mb-1.5">Jumlah Daun Jendela:</label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {[2, 3, 4, 5, 6].map((count) => (
+                          <button
+                            key={`wcount-${count}`}
+                            type="button"
+                            onClick={() => handleWindowLeafCountChange(count)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition border ${
+                              windowCount === count
+                                ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md'
+                                : 'bg-slate-950 text-slate-300 border-slate-700 hover:bg-slate-800'
+                            }`}
+                          >
+                            {count} Daun
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* 2. Popular Preset Shortcuts */}
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-400 mb-1">Preset Kombinasi Cepat:</label>
+                      <div className="flex flex-wrap gap-1.5 text-xs">
+                        {windowCount === 2 && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => setWindowLeaves(['open', 'open'])}
+                              className="px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-700 hover:border-amber-400 text-slate-200 font-semibold"
+                            >
+                              🔓 Buka - 🔓 Buka
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setWindowLeaves(['open', 'fixed'])}
+                              className="px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-700 hover:border-amber-400 text-slate-200 font-semibold"
+                            >
+                              🔓 Buka - 🔒 Mati
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setWindowLeaves(['fixed', 'open'])}
+                              className="px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-700 hover:border-amber-400 text-slate-200 font-semibold"
+                            >
+                              🔒 Mati - 🔓 Buka
+                            </button>
+                          </>
+                        )}
+                        {windowCount === 3 && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => setWindowLeaves(['open', 'fixed', 'open'])}
+                              className="px-2.5 py-1 rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-300 font-bold"
+                            >
+                              ⭐ Buka - Mati - Buka (Favorit)
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setWindowLeaves(['open', 'open', 'open'])}
+                              className="px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-700 hover:border-amber-400 text-slate-200 font-semibold"
+                            >
+                              🔓 Semua Buka (3 Daun)
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setWindowLeaves(['fixed', 'open', 'fixed'])}
+                              className="px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-700 hover:border-amber-400 text-slate-200 font-semibold"
+                            >
+                              🔒 Mati - 🔓 Buka - 🔒 Mati
+                            </button>
+                          </>
+                        )}
+                        {windowCount === 4 && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => setWindowLeaves(['fixed', 'open', 'open', 'fixed'])}
+                              className="px-2.5 py-1 rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-300 font-bold"
+                            >
+                              ⭐ Mati - Buka - Buka - Mati (Fasad)
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setWindowLeaves(['open', 'fixed', 'fixed', 'open'])}
+                              className="px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-700 hover:border-amber-400 text-slate-200 font-semibold"
+                            >
+                              🔓 Buka - Mati - Mati - Buka
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setWindowLeaves(['open', 'open', 'open', 'open'])}
+                              className="px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-700 hover:border-amber-400 text-slate-200 font-semibold"
+                            >
+                              🔓 Semua Buka (4 Daun)
+                            </button>
+                          </>
+                        )}
+                        {windowCount >= 5 && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => setWindowLeaves(Array.from({ length: windowCount }, (_, i) => i % 2 === 0 ? 'open' : 'fixed'))}
+                              className="px-2.5 py-1 rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-300 font-bold"
+                            >
+                              ⭐ Selang-Seling (Buka-Mati)
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setWindowLeaves(Array.from({ length: windowCount }, () => 'open'))}
+                              className="px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-700 hover:border-amber-400 text-slate-200 font-semibold"
+                            >
+                              🔓 Semua Buka ({windowCount} Daun)
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* 3. Interactive Per-Leaf Tile Builder */}
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-400 mb-1.5">Atur Tipe Per Daun (Klik Kartu untuk Ubah):</label>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                        {windowLeaves.map((leafState, leafIdx) => {
+                          const isOpen = leafState === 'open';
+                          return (
+                            <div
+                              key={`leaf-tile-${leafIdx}`}
+                              onClick={() => handleToggleSingleLeaf(leafIdx)}
+                              className={`p-2 rounded-xl border cursor-pointer select-none transition-all flex flex-col items-center justify-center text-center gap-1 ${
+                                isOpen
+                                  ? 'bg-emerald-950/40 border-emerald-500/50 hover:bg-emerald-900/50'
+                                  : 'bg-slate-950 border-slate-800 hover:bg-slate-800'
+                              }`}
+                            >
+                              <span className="text-[10px] font-bold text-slate-400 uppercase">Daun {leafIdx + 1}</span>
+                              <span
+                                className={`text-[11px] font-extrabold px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                                  isOpen
+                                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                                    : 'bg-slate-800 text-slate-400 border border-slate-700'
+                                }`}
+                              >
+                                {isOpen ? '🔓 Buka-Tutup' : '🔒 Kaca Mati'}
+                              </span>
+                              <span className="text-[9px] text-slate-500 font-medium">Klik ubah</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
                 )}
 
@@ -970,10 +1380,20 @@ export const CalculatorTab: React.FC<CalculatorTabProps> = ({
               hasTopBoven={hasTopBoven}
               topBovenHeightMm={topBovenHeightMm}
               doorPanelType={activeDoorModel?.panelStyle || doorPanelType}
+              doorInfillType={doorInfillType}
+              handleType={handleType}
+              handlePosition={handlePosition}
+              handleColor={handleColor}
+              handleHeightMm={handleHeightMm}
               doorWidthMm={doorWidthMm}
               windowCount={windowCount}
               windowHeightMm={windowHeightMm}
+              windowLeaves={windowLeaves}
               title={frameName || 'KUSEN TIPE 1'}
+              onHandleHeightChange={(newH) => setHandleHeightMm(newH)}
+              onHandlePositionChange={(newPos) => setHandlePosition(newPos)}
+              onHandleTypeChange={(newType) => setHandleType(newType)}
+              onRemoveHandle={() => setHandlePosition('none')}
             />
           </div>
 
@@ -1734,6 +2154,139 @@ export const CalculatorTab: React.FC<CalculatorTabProps> = ({
               >
                 Simpan ke Katalog
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AI Smart Estimator Assistant Modal */}
+      {showAiModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-violet-500/30 rounded-2xl max-w-xl w-full p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2.5 rounded-xl bg-violet-600/20 text-violet-400 border border-violet-500/30">
+                  <Wand2 className="w-5 h-5 text-amber-300 animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-100 flex items-center gap-1.5">
+                    AI Smart Assistant Desain & RAB
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Ketik spesifikasi unit pintu/jendela dalam bahasa alami, AI akan mengonfigurasi otomatis.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowAiModal(false)}
+                className="text-slate-400 hover:text-slate-200 text-lg font-bold p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                  Tuliskan Instruksi Permintaan Desain
+                </label>
+                <textarea
+                  rows={3}
+                  value={aiPromptInput}
+                  onChange={(e) => setAiPromptInput(e.target.value)}
+                  placeholder="Contoh: Buatkan pintu utama 2 daun 160x220 cm ACP kayu jati, pull handle hitam 100 cm, frame hitam 4 inch..."
+                  className="w-full bg-slate-950 border border-slate-700 focus:border-violet-500 rounded-xl p-3 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none transition shadow-inner font-medium"
+                />
+              </div>
+
+              {/* Quick Prompt Chips */}
+              <div>
+                <span className="text-[11px] font-bold text-slate-400 block mb-1.5">
+                  💡 Rekomendasi Contoh Cepat (Klik untuk mencoba):
+                </span>
+                <div className="flex flex-wrap gap-1.5 text-[11px]">
+                  <button
+                    onClick={() => {
+                      const txt = 'Pintu utama 2 daun 160x220 cm ACP kayu jati, pull handle hitam 100 cm, frame hitam 4 inch';
+                      setAiPromptInput(txt);
+                      handleApplyAiDesign(txt);
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-violet-900/50 text-slate-300 border border-slate-700 hover:border-violet-500/50 transition text-left"
+                  >
+                    🪵 Pintu Utama ACP Kayu Jati Ganda (160x220cm)
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      const txt = 'Pintu swing 90x210 cm ACP kayu walnut, handle lever stainless, kusen cokelat 3 inch';
+                      setAiPromptInput(txt);
+                      handleApplyAiDesign(txt);
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-violet-900/50 text-slate-300 border border-slate-700 hover:border-violet-500/50 transition text-left"
+                  >
+                    🚪 Pintu Kamar ACP Walnut (90x210cm)
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      const txt = 'Pintu dan jendela kombinasi PJ 230x210 cm boven kaca mati, pintu ACP kayu oak, pull handle 80cm';
+                      setAiPromptInput(txt);
+                      handleApplyAiDesign(txt);
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-violet-900/50 text-slate-300 border border-slate-700 hover:border-violet-500/50 transition text-left"
+                  >
+                    🏛️ Pintu & Jendela Kombinasi PJ (230x210cm)
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      const txt = 'Pintu sliding 2 daun 180x210 cm kaca rayban, handle tanam flush';
+                      setAiPromptInput(txt);
+                      handleApplyAiDesign(txt);
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-violet-900/50 text-slate-300 border border-slate-700 hover:border-violet-500/50 transition text-left"
+                  >
+                    🪟 Pintu Sliding Geser Rayban (180x210cm)
+                  </button>
+                </div>
+              </div>
+
+              {/* Feedback Alert */}
+              {aiFeedbackMessage && (
+                <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-medium flex items-center gap-2">
+                  <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>{aiFeedbackMessage}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="pt-3 border-t border-slate-800 flex items-center justify-between">
+              <span className="text-[10px] text-slate-500">Powered by Gemini AI Studio Engine</span>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowAiModal(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold"
+                >
+                  Batal
+                </button>
+                <button
+                  onClick={() => handleApplyAiDesign(aiPromptInput)}
+                  disabled={isAiLoading || !aiPromptInput.trim()}
+                  className="flex items-center gap-2 px-5 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white text-xs font-bold transition shadow-lg shadow-indigo-500/20 disabled:opacity-50"
+                >
+                  {isAiLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin text-amber-300" />
+                      <span>Memproses AI...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4 text-amber-300" />
+                      <span>Terapkan Desain AI</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>

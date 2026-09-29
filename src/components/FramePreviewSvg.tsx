@@ -1,5 +1,15 @@
 import React, { useState, useRef } from 'react';
-import { FrameType, AluminumProfile, AluminumColor, GlassType, DoorPanelStyle } from '../types';
+import { 
+  FrameType, 
+  AluminumProfile, 
+  AluminumColor, 
+  GlassType, 
+  DoorPanelStyle, 
+  DoorInfillType, 
+  DoorHandleType, 
+  DoorHandlePosition, 
+  DoorHandleColor 
+} from '../types';
 import { Download, Eye, Maximize2, Compass, Ruler, Calculator, Sparkles, Layers } from 'lucide-react';
 
 interface FramePreviewProps {
@@ -15,9 +25,15 @@ interface FramePreviewProps {
   hasTopBoven?: boolean;
   topBovenHeightMm?: number;
   doorPanelType?: DoorPanelStyle | string;
+  doorInfillType?: DoorInfillType;
+  handleType?: DoorHandleType;
+  handlePosition?: DoorHandlePosition;
+  handleColor?: DoorHandleColor;
+  handleHeightMm?: number;
   doorWidthMm?: number;
   windowCount?: number;
   windowHeightMm?: number;
+  windowLeaves?: WindowLeafType[];
   title?: string;
   className?: string;
   defaultViewMode?: 'cad' | 'render3d';
@@ -25,6 +41,10 @@ interface FramePreviewProps {
   hideToolbar?: boolean;
   hideFooter?: boolean;
   compact?: boolean;
+  onHandleHeightChange?: (newHeightMm: number) => void;
+  onHandlePositionChange?: (newPosition: DoorHandlePosition) => void;
+  onHandleTypeChange?: (newType: DoorHandleType) => void;
+  onRemoveHandle?: () => void;
 }
 
 export const FramePreviewSvg: React.FC<FramePreviewProps> = ({
@@ -40,9 +60,15 @@ export const FramePreviewSvg: React.FC<FramePreviewProps> = ({
   hasTopBoven = false,
   topBovenHeightMm = 140,
   doorPanelType = 'panil_horizontal',
+  doorInfillType,
+  handleType = 'pull_80',
+  handlePosition = 'right',
+  handleColor = 'stainless',
+  handleHeightMm = 1000,
   doorWidthMm = 900,
   windowCount = 2,
   windowHeightMm = 1350,
+  windowLeaves,
   title = 'KUSEN TIPE 1',
   className = '',
   defaultViewMode = 'render3d',
@@ -50,6 +76,10 @@ export const FramePreviewSvg: React.FC<FramePreviewProps> = ({
   hideToolbar = false,
   hideFooter = false,
   compact = false,
+  onHandleHeightChange,
+  onHandlePositionChange,
+  onHandleTypeChange,
+  onRemoveHandle,
 }) => {
   // View mode: 'cad' (Technical shop drawing like uploaded blueprint) or 'render3d' (Photorealistic shaded)
   const [internalViewMode, setInternalViewMode] = useState<'cad' | 'render3d'>(defaultViewMode);
@@ -58,6 +88,10 @@ export const FramePreviewSvg: React.FC<FramePreviewProps> = ({
   const [showDimensions, setShowDimensions] = useState<boolean>(true);
   const [showFloorPlan, setShowFloorPlan] = useState<boolean>(!compact);
   const [showFormula, setShowFormula] = useState<boolean>(!compact);
+  const [isHoveringHandle, setIsHoveringHandle] = useState<boolean>(false);
+  const [isDraggingHandle, setIsDraggingHandle] = useState<boolean>(false);
+  const [dragDoorCoords, setDragDoorCoords] = useState<{ doorBaseY: number; doorLeafH: number } | null>(null);
+
   const svgRef = useRef<SVGSVGElement | null>(null);
 
   // Profile dimensions in mm & cm
@@ -105,6 +139,37 @@ export const FramePreviewSvg: React.FC<FramePreviewProps> = ({
   const canvasH = compact
     ? Math.max(480, Math.round(originY + svgFrameH + (showDimensions ? 75 : 35)))
     : 1000;
+
+  // Handle Dragging Listener for interactive height adjust
+  React.useEffect(() => {
+    if (!isDraggingHandle || !dragDoorCoords) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!svgRef.current || !dragDoorCoords) return;
+      const rect = svgRef.current.getBoundingClientRect();
+      const svgY = ((e.clientY - rect.top) / rect.height) * canvasH;
+      const { doorBaseY, doorLeafH } = dragDoorCoords;
+      
+      const currentMmFromBottom = (doorBaseY + doorLeafH - svgY) / scale;
+      const clampedMm = Math.max(300, Math.min(1800, Math.round(currentMmFromBottom / 10) * 10));
+      
+      if (onHandleHeightChange) {
+        onHandleHeightChange(clampedMm);
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsDraggingHandle(false);
+      setDragDoorCoords(null);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDraggingHandle, dragDoorCoords, scale, canvasH, onHandleHeightChange]);
 
   // --- COLOR SYSTEM MAPPING ---
   const getColorPalette = () => {
@@ -336,6 +401,360 @@ export const FramePreviewSvg: React.FC<FramePreviewProps> = ({
   const winAreaW = windowAreaWidthMm * scale;
   const winAreaH = effectiveWindowHeightMm * scale;
 
+  // Determine effective infill
+  const resolvedInfill: DoorInfillType = doorInfillType || (
+    doorPanelType?.includes('kayu') || doorPanelType?.includes('wood')
+      ? 'acp_kayu_jati'
+      : doorPanelType === 'acp_solid'
+        ? 'acp_solid_white'
+        : doorPanelType === 'jalusi_louver'
+          ? 'jalusi_louver'
+          : doorPanelType === 'spandrel' || doorPanelType === 'panil_horizontal'
+            ? 'spandrel_alumunium'
+            : doorPanelType === 'kaca_full'
+              ? 'kaca'
+              : 'acp_kayu_jati'
+  );
+
+  const getHandleColors = () => {
+    if (handleColor === 'black') {
+      return { fill: 'url(#handleGradBlack)', stroke: '#020617', highlight: '#64748B', body: '#0F172A' };
+    }
+    if (handleColor === 'gold') {
+      return { fill: 'url(#handleGradGold)', stroke: '#78350F', highlight: '#FEF08A', body: '#D97706' };
+    }
+    return { fill: 'url(#handleGradStainless)', stroke: '#1E293B', highlight: '#FFFFFF', body: '#94A3B8' };
+  };
+
+  const renderDoorInfill = (px: number, py: number, pw: number, ph: number) => {
+    if (resolvedInfill === 'acp_kayu_jati') {
+      return (
+        <g id="woodJatiInfill">
+          <rect x={px} y={py} width={pw} height={ph} fill="url(#woodGrainJati)" stroke={palette.innerStroke} strokeWidth="1.5" />
+          <rect x={px + 4} y={py + 4} width={pw - 8} height={ph - 8} fill="none" stroke="#5E2C0C" strokeWidth="0.8" strokeDasharray="3 3" opacity="0.6" />
+        </g>
+      );
+    }
+    if (resolvedInfill === 'acp_kayu_walnut') {
+      return (
+        <g id="woodWalnutInfill">
+          <rect x={px} y={py} width={pw} height={ph} fill="url(#woodGrainWalnut)" stroke={palette.innerStroke} strokeWidth="1.5" />
+          <rect x={px + 4} y={py + 4} width={pw - 8} height={ph - 8} fill="none" stroke="#1F110A" strokeWidth="0.8" strokeDasharray="3 3" opacity="0.6" />
+        </g>
+      );
+    }
+    if (resolvedInfill === 'acp_kayu_oak') {
+      return (
+        <g id="woodOakInfill">
+          <rect x={px} y={py} width={pw} height={ph} fill="url(#woodGrainOak)" stroke={palette.innerStroke} strokeWidth="1.5" />
+          <rect x={px + 4} y={py + 4} width={pw - 8} height={ph - 8} fill="none" stroke="#8C5C30" strokeWidth="0.8" strokeDasharray="3 3" opacity="0.6" />
+        </g>
+      );
+    }
+    if (resolvedInfill === 'acp_solid_white') {
+      return (
+        <g id="acpWhiteInfill">
+          <rect x={px} y={py} width={pw} height={ph} fill="#F8FAFC" stroke={palette.innerStroke} strokeWidth="1.5" />
+          <rect x={px + 6} y={py + 6} width={pw - 12} height={ph - 12} fill="none" stroke="#CBD5E1" strokeWidth="1" strokeDasharray="4 4" />
+        </g>
+      );
+    }
+    if (resolvedInfill === 'acp_solid_black') {
+      return (
+        <g id="acpBlackInfill">
+          <rect x={px} y={py} width={pw} height={ph} fill="#1E242B" stroke={palette.innerStroke} strokeWidth="1.5" />
+          <rect x={px + 6} y={py + 6} width={pw - 12} height={ph - 12} fill="none" stroke="#334155" strokeWidth="1" strokeDasharray="4 4" />
+        </g>
+      );
+    }
+    if (resolvedInfill === 'acp_solid_grey') {
+      return (
+        <g id="acpGreyInfill">
+          <rect x={px} y={py} width={pw} height={ph} fill="#475569" stroke={palette.innerStroke} strokeWidth="1.5" />
+          <rect x={px + 6} y={py + 6} width={pw - 12} height={ph - 12} fill="none" stroke="#64748B" strokeWidth="1" strokeDasharray="4 4" />
+        </g>
+      );
+    }
+    if (resolvedInfill === 'acp_solid_brown') {
+      return (
+        <g id="acpBrownInfill">
+          <rect x={px} y={py} width={pw} height={ph} fill="#451A03" stroke={palette.innerStroke} strokeWidth="1.5" />
+          <rect x={px + 6} y={py + 6} width={pw - 12} height={ph - 12} fill="none" stroke="#78350F" strokeWidth="1" strokeDasharray="4 4" />
+        </g>
+      );
+    }
+    if (resolvedInfill === 'spandrel_alumunium' || doorPanelType === 'panil_horizontal') {
+      return (
+        <g id="spandrelInfill">
+          <rect x={px} y={py} width={pw} height={ph} fill={palette.isDark ? '#2B323C' : '#F1F5F9'} stroke={palette.innerStroke} strokeWidth="1.5" />
+          {Array.from({ length: 8 }).map((_, sIdx) => {
+            const sh = (ph - 30) / 8;
+            return (
+              <g key={`spandrel-slat-${sIdx}`}>
+                <rect x={px + 6} y={py + 8 + sIdx * (sh + 2)} width={pw - 12} height={sh} fill={palette.isDark ? '#333D4B' : '#FFFFFF'} stroke={palette.stroke} strokeWidth="1" />
+              </g>
+            );
+          })}
+        </g>
+      );
+    }
+    if (resolvedInfill === 'jalusi_louver') {
+      return (
+        <g id="louverInfill">
+          <rect x={px} y={py} width={pw} height={ph} fill={palette.isDark ? '#232931' : '#F1F5F9'} stroke={palette.innerStroke} strokeWidth="1.5" />
+          {Array.from({ length: 14 }).map((_, jIdx) => {
+            const jy = py + 12 + jIdx * ((ph - 24) / 14);
+            return (
+              <line key={`louver-blade-${jIdx}`} x1={px + 4} y1={jy} x2={px + pw - 4} y2={jy} stroke={palette.stroke} strokeWidth="2.2" />
+            );
+          })}
+        </g>
+      );
+    }
+    // Default / Kaca
+    return (
+      <g id="glassInfill">
+        <rect x={px} y={py} width={pw} height={ph} fill={glassStyle.fill} fillOpacity={glassStyle.opacity} stroke={palette.innerStroke} strokeWidth="1.5" />
+        <line x1={px + pw * 0.25} y1={py + ph * 0.75} x2={px + pw * 0.75} y2={py + ph * 0.25} stroke="rgba(255,255,255,0.6)" strokeWidth="1.5" />
+      </g>
+    );
+  };
+
+  const renderDoorHandle = (doorBaseX: number, doorBaseY: number, doorLeafW: number, doorLeafH: number, isPair = false) => {
+    const hColors = getHandleColors();
+    const handleY = doorBaseY + doorLeafH - (handleHeightMm * scale);
+
+    // If handle is hidden / removed
+    if (handlePosition === 'none') {
+      return (
+        <g
+          key="no-handle-restore"
+          className="cursor-pointer group"
+          onClick={() => {
+            if (onHandlePositionChange) onHandlePositionChange('kanan-kiri');
+          }}
+        >
+          <rect
+            x={doorBaseX + doorLeafW / 2 - 60}
+            y={doorBaseY + doorLeafH / 2 - 14}
+            width="120"
+            height="28"
+            rx="14"
+            fill="#0F172A"
+            stroke="#F59E0B"
+            strokeWidth="1.5"
+            opacity="0.9"
+          />
+          <text
+            x={doorBaseX + doorLeafW / 2}
+            y={doorBaseY + doorLeafH / 2 + 4}
+            fill="#F8FAFC"
+            fontSize="10"
+            fontWeight="bold"
+            textAnchor="middle"
+            fontFamily="sans-serif"
+          >
+            + Pasang Handle
+          </text>
+        </g>
+      );
+    }
+
+    const renderSingleHandle = (hx: number, keySuffix: string) => {
+      // Inner handle geometry
+      let handleGraphic = null;
+
+      if (handleType.startsWith('pull_')) {
+        let lengthMm = 800;
+        if (handleType === 'pull_60') lengthMm = 600;
+        else if (handleType === 'pull_100') lengthMm = 1000;
+        else if (handleType === 'pull_120') lengthMm = 1200;
+
+        const pullH = Math.min(lengthMm * scale, doorLeafH - 40);
+        const topY = handleY - pullH / 2;
+        const bottomY = handleY + pullH / 2;
+
+        handleGraphic = (
+          <g filter="url(#handleShadow)">
+            <rect x={hx - 4} y={topY + 12} width="8" height="6" rx="1.5" fill={hColors.body} stroke={hColors.stroke} strokeWidth="0.8" />
+            <rect x={hx - 4} y={bottomY - 18} width="8" height="6" rx="1.5" fill={hColors.body} stroke={hColors.stroke} strokeWidth="0.8" />
+            <rect x={hx - 3.5} y={topY} width="7" height={pullH} rx="3.5" fill={hColors.fill} stroke={hColors.stroke} strokeWidth="1.2" />
+            <text x={hx} y={topY - 6} fontSize="7.5" fontFamily="sans-serif" fontWeight="bold" textAnchor="middle" fill={viewMode === 'cad' ? '#334155' : '#CBD5E1'}>
+              {lengthMm / 10}cm
+            </text>
+          </g>
+        );
+      } else if (handleType === 'smart_lock') {
+        const lockW = 12;
+        const lockH = 46;
+        handleGraphic = (
+          <g filter="url(#handleShadow)">
+            <rect x={hx - lockW / 2} y={handleY - lockH / 2} width={lockW} height={lockH} rx="4" fill="#090D14" stroke="#334155" strokeWidth="1.2" />
+            <rect x={hx - 4} y={handleY - lockH / 2 + 5} width="8" height="14" rx="2" fill="#020617" />
+            <circle cx={hx - 2} cy={handleY - lockH / 2 + 8} r="0.8" fill="#38BDF8" />
+            <circle cx={hx + 2} cy={handleY - lockH / 2 + 8} r="0.8" fill="#38BDF8" />
+            <circle cx={hx - 2} cy={handleY - lockH / 2 + 12} r="0.8" fill="#38BDF8" />
+            <circle cx={hx + 2} cy={handleY - lockH / 2 + 12} r="0.8" fill="#38BDF8" />
+            <circle cx={hx} cy={handleY - 2} r="2.5" fill="#1E293B" stroke="#38BDF8" strokeWidth="0.8" />
+            <rect x={hx - 12} y={handleY + 6} width="16" height="5" rx="1.5" fill={hColors.fill} stroke="#020617" strokeWidth="1" />
+          </g>
+        );
+      } else if (handleType === 'flush') {
+        handleGraphic = (
+          <g filter="url(#handleShadow)">
+            <rect x={hx - 4} y={handleY - 22} width="8" height="44" rx="2" fill={hColors.body} stroke={hColors.stroke} strokeWidth="1" />
+            <rect x={hx - 2} y={handleY - 16} width="4" height="32" rx="1" fill="#020617" />
+          </g>
+        );
+      } else if (handleType === 'knob') {
+        handleGraphic = (
+          <g filter="url(#handleShadow)">
+            <circle cx={hx} cy={handleY} r="7" fill={hColors.body} stroke={hColors.stroke} strokeWidth="1.2" />
+            <circle cx={hx} cy={handleY} r="5" fill={hColors.fill} />
+            <circle cx={hx} cy={handleY} r="1.5" fill="#020617" />
+          </g>
+        );
+      } else {
+        // Default Lever
+        handleGraphic = (
+          <g filter="url(#handleShadow)">
+            <rect x={hx - 5} y={handleY - 18} width="10" height="36" rx="3" fill={hColors.body} stroke={hColors.stroke} strokeWidth="1.2" />
+            <circle cx={hx} cy={handleY - 6} r="3" fill={hColors.highlight} stroke={hColors.stroke} strokeWidth="0.8" />
+            <rect x={hx - 14} y={handleY - 8} width="16" height="4.5" rx="1.5" fill={hColors.fill} stroke={hColors.stroke} strokeWidth="1" />
+            <circle cx={hx} cy={handleY + 8} r="2" fill="#020617" />
+          </g>
+        );
+      }
+
+      return (
+        <g
+          key={`handle-interactive-${keySuffix}-${hx}`}
+          className="cursor-ns-resize group/handle"
+          onMouseEnter={() => setIsHoveringHandle(true)}
+          onMouseLeave={() => setIsHoveringHandle(false)}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsDraggingHandle(true);
+            setDragDoorCoords({ doorBaseY, doorLeafH });
+          }}
+        >
+          {/* Hit area target for easier dragging */}
+          <rect
+            x={hx - 18}
+            y={handleY - 35}
+            width="36"
+            height="70"
+            fill="transparent"
+          />
+
+          {/* Render graphic */}
+          {handleGraphic}
+
+          {/* Drag Grip Indicator Dots on Hover */}
+          <g className="opacity-0 group-hover/handle:opacity-100 transition-opacity">
+            <circle cx={hx - 12} cy={handleY - 6} r="1.5" fill="#F59E0B" />
+            <circle cx={hx - 12} cy={handleY} r="1.5" fill="#F59E0B" />
+            <circle cx={hx - 12} cy={handleY + 6} r="1.5" fill="#F59E0B" />
+          </g>
+
+          {/* Trash / Delete Handle Button attached right next to handle */}
+          <g
+            className="opacity-80 hover:opacity-100 cursor-pointer"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (onRemoveHandle) {
+                onRemoveHandle();
+              } else if (onHandlePositionChange) {
+                onHandlePositionChange('none');
+              }
+            }}
+          >
+            <circle cx={hx + 18} cy={handleY} r="8" fill="#EF4444" stroke="#7F1D1D" strokeWidth="1" />
+            <line x1={hx + 15} y1={handleY - 3} x2={hx + 21} y2={handleY + 3} stroke="#FFFFFF" strokeWidth="1.8" strokeLinecap="round" />
+            <line x1={hx + 21} y1={handleY - 3} x2={hx + 15} y2={handleY + 3} stroke="#FFFFFF" strokeWidth="1.8" strokeLinecap="round" />
+          </g>
+        </g>
+      );
+    };
+
+    // Determine handle positions array [hx1, hx2] based on single vs double door and selected position
+    const isDoubleDoor = isPair || (mullionVerticalCount >= 1 && type.includes('pintu')) || ['kiri-kiri', 'kiri-kanan', 'kanan-kiri', 'kanan-kanan', 'center_pair'].includes(handlePosition);
+
+    let handleXPositions: number[] = [];
+
+    if (isDoubleDoor) {
+      const halfW = doorLeafW / 2;
+      const leaf1LeftX = doorBaseX + frameThickPx + 18;
+      const leaf1RightX = doorBaseX + halfW - 18;
+      const leaf2LeftX = doorBaseX + halfW + 18;
+      const leaf2RightX = doorBaseX + doorLeafW - frameThickPx - 18;
+
+      if (handlePosition === 'kiri-kiri') {
+        handleXPositions = [leaf1LeftX, leaf2LeftX];
+      } else if (handlePosition === 'kiri-kanan') {
+        handleXPositions = [leaf1LeftX, leaf2RightX];
+      } else if (handlePosition === 'kanan-kanan') {
+        handleXPositions = [leaf1RightX, leaf2RightX];
+      } else {
+        // Default 'kanan-kiri' or 'center_pair' (Meeting stile center)
+        handleXPositions = [leaf1RightX, leaf2LeftX];
+      }
+    } else {
+      // Single leaf door
+      if (handlePosition === 'left' || handlePosition === 'kiri-kiri' || handlePosition === 'kiri-kanan') {
+        handleXPositions = [doorBaseX + frameThickPx + 22];
+      } else {
+        // Right or default
+        handleXPositions = [doorBaseX + doorLeafW - frameThickPx - 22];
+      }
+    }
+
+    return (
+      <g key={`door-handles-group-${doorBaseX}`}>
+        {/* Height Guide Line when hovering or dragging */}
+        {(isHoveringHandle || isDraggingHandle) && (
+          <g>
+            <line
+              x1={doorBaseX}
+              y1={handleY}
+              x2={doorBaseX + doorLeafW}
+              y2={handleY}
+              stroke="#F59E0B"
+              strokeWidth="1.2"
+              strokeDasharray="4 3"
+            />
+            <rect
+              x={doorBaseX + doorLeafW / 2 - 85}
+              y={handleY - 22}
+              width="170"
+              height="18"
+              rx="4"
+              fill="#0F172A"
+              stroke="#F59E0B"
+              strokeWidth="1"
+            />
+            <text
+              x={doorBaseX + doorLeafW / 2}
+              y={handleY - 9}
+              fill="#F59E0B"
+              fontSize="9"
+              fontWeight="bold"
+              textAnchor="middle"
+              fontFamily="sans-serif"
+            >
+              📏 Tinggi: {Math.round(handleHeightMm / 10)} cm ({handleHeightMm} mm)
+            </text>
+          </g>
+        )}
+
+        {/* Render each calculated handle */}
+        {handleXPositions.map((hx, idx) => renderSingleHandle(hx, `leaf-${idx}`))}
+      </g>
+    );
+  };
+
   return (
     <div className={`flex flex-col bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden ${className}`}>
       
@@ -442,10 +861,77 @@ export const FramePreviewSvg: React.FC<FramePreviewProps> = ({
               <stop offset="100%" stopColor="rgba(255,255,255,0.0)" />
             </linearGradient>
 
+            {/* Stainless Handle Gradient */}
+            <linearGradient id="handleGradStainless" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#64748B" />
+              <stop offset="30%" stopColor="#F8FAFC" />
+              <stop offset="70%" stopColor="#CBD5E1" />
+              <stop offset="100%" stopColor="#475569" />
+            </linearGradient>
+
+            {/* Black Handle Gradient */}
+            <linearGradient id="handleGradBlack" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#0F172A" />
+              <stop offset="35%" stopColor="#334155" />
+              <stop offset="75%" stopColor="#1E293B" />
+              <stop offset="100%" stopColor="#020617" />
+            </linearGradient>
+
+            {/* Gold Handle Gradient */}
+            <linearGradient id="handleGradGold" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#B45309" />
+              <stop offset="35%" stopColor="#FDE68A" />
+              <stop offset="75%" stopColor="#F59E0B" />
+              <stop offset="100%" stopColor="#92400E" />
+            </linearGradient>
+
+            {/* Drop Shadow for Handles */}
+            <filter id="handleShadow" x="-30%" y="-20%" width="160%" height="140%">
+              <feDropShadow dx="2" dy="3" stdDeviation="2" floodColor="rgba(0,0,0,0.5)" />
+            </filter>
+
             {/* Door Panel Bevel Filter */}
             <filter id="panelBevel" x="-10%" y="-10%" width="120%" height="120%">
               <feDropShadow dx="1" dy="1" stdDeviation="1.5" floodColor={palette.shadow} />
             </filter>
+
+            {/* --- WOOD GRAIN PATTERNS (HIGH FIDELITY) --- */}
+            {/* 1. Jati (Warm Teak Wood) */}
+            <pattern id="woodGrainJati" width="90" height="240" patternUnits="userSpaceOnUse">
+              <rect width="90" height="240" fill="#9C5221" />
+              {/* Wood Plank Shading */}
+              <rect x="0" y="0" width="88" height="240" fill="#A85D2A" />
+              <line x1="89" y1="0" x2="89" y2="240" stroke="#5E2C0C" strokeWidth="1.5" opacity="0.6" />
+              {/* Organic Wood Grain Lines */}
+              <path d="M 12 0 Q 18 60 14 120 T 16 240" fill="none" stroke="#783811" strokeWidth="1.2" opacity="0.65" />
+              <path d="M 32 0 Q 25 70 34 140 T 30 240" fill="none" stroke="#662F0D" strokeWidth="1.5" opacity="0.7" />
+              <path d="M 50 0 Q 56 40 48 90 T 54 180 T 49 240" fill="none" stroke="#854015" strokeWidth="1.2" opacity="0.5" />
+              <path d="M 72 0 Q 64 80 75 160 T 68 240" fill="none" stroke="#662F0D" strokeWidth="1.3" opacity="0.6" />
+              {/* Wood Knot */}
+              <ellipse cx="32" cy="110" rx="6" ry="16" fill="none" stroke="#5E2C0C" strokeWidth="1.2" opacity="0.75" />
+              <ellipse cx="32" cy="110" rx="3" ry="8" fill="#5E2C0C" opacity="0.5" />
+            </pattern>
+
+            {/* 2. Walnut (Dark Chocolate Wood) */}
+            <pattern id="woodGrainWalnut" width="90" height="240" patternUnits="userSpaceOnUse">
+              <rect width="90" height="240" fill="#382115" />
+              <rect x="0" y="0" width="88" height="240" fill="#44291B" />
+              <line x1="89" y1="0" x2="89" y2="240" stroke="#1F110A" strokeWidth="1.5" opacity="0.7" />
+              <path d="M 15 0 Q 22 80 16 150 T 20 240" fill="none" stroke="#26140B" strokeWidth="1.5" opacity="0.8" />
+              <path d="M 38 0 Q 30 60 40 130 T 36 240" fill="none" stroke="#5C3825" strokeWidth="1.2" opacity="0.6" />
+              <path d="M 62 0 Q 70 90 58 170 T 65 240" fill="none" stroke="#26140B" strokeWidth="1.6" opacity="0.8" />
+              <ellipse cx="60" cy="140" rx="5" ry="14" fill="none" stroke="#1F110A" strokeWidth="1.2" opacity="0.8" />
+            </pattern>
+
+            {/* 3. Oak (Natural Blonde Honey Oak) */}
+            <pattern id="woodGrainOak" width="90" height="240" patternUnits="userSpaceOnUse">
+              <rect width="90" height="240" fill="#C9945F" />
+              <rect x="0" y="0" width="88" height="240" fill="#D4A373" />
+              <line x1="89" y1="0" x2="89" y2="240" stroke="#8C5C30" strokeWidth="1.5" opacity="0.6" />
+              <path d="M 16 0 Q 12 70 20 140 T 15 240" fill="none" stroke="#A77241" strokeWidth="1.3" opacity="0.7" />
+              <path d="M 44 0 Q 50 60 42 120 T 48 240" fill="none" stroke="#8C5C30" strokeWidth="1.5" opacity="0.65" />
+              <path d="M 70 0 Q 62 90 74 160 T 68 240" fill="none" stroke="#A77241" strokeWidth="1.3" opacity="0.7" />
+            </pattern>
           </defs>
 
           {/* BACKGROUND SHEET */}
@@ -670,201 +1156,12 @@ export const FramePreviewSvg: React.FC<FramePreviewProps> = ({
                   rx="1"
                 />
 
-                {/* Door Panels (Rendering according to chosen or custom model) */}
-                {(doorPanelType === 'panil_horizontal' || !doorPanelType || doorPanelType.includes('spandrel') || doorPanelType.includes('horizontal')) && (
-                  <g id="horizontalPanels">
-                    {Array.from({ length: 7 }).map((_, pIdx) => {
-                      const panelH = (doorH - 2 * frameThickPx - 80) / 7;
-                      const py = originY + frameThickPx + 30 + pIdx * (panelH + 6);
-                      const px = originX + frameThickPx + 20;
-                      const pw = doorW - 2 * frameThickPx - 40;
-
-                      return (
-                        <g key={`door-panel-${pIdx}`}>
-                          <rect
-                            x={px}
-                            y={py}
-                            width={pw}
-                            height={panelH}
-                            fill={palette.isDark ? '#2B323C' : '#FFFFFF'}
-                            stroke={palette.stroke}
-                            strokeWidth="1.2"
-                            rx="1"
-                            filter={viewMode === 'render3d' ? 'url(#panelBevel)' : undefined}
-                          />
-                          {/* Inner groove double line for realistic bevel */}
-                          <line
-                            x1={px + 2}
-                            y1={py + 3}
-                            x2={px + pw - 2}
-                            y2={py + 3}
-                            stroke={palette.highlight}
-                            strokeWidth="0.8"
-                            opacity="0.7"
-                          />
-                        </g>
-                      );
-                    })}
-                  </g>
-                )}
-
-                {doorPanelType === 'kaca_full' && (
-                  <g id="kacaFullDoor">
-                    <rect
-                      x={originX + frameThickPx + 16}
-                      y={originY + frameThickPx + 16}
-                      width={doorW - 2 * frameThickPx - 32}
-                      height={doorH - 2 * frameThickPx - 26}
-                      fill={glassStyle.fill}
-                      fillOpacity={glassStyle.opacity}
-                      stroke={palette.stroke}
-                      strokeWidth="1.5"
-                    />
-                    <line
-                      x1={originX + doorW * 0.3}
-                      y1={originY + doorH * 0.7}
-                      x2={originX + doorW * 0.75}
-                      y2={originY + doorH * 0.25}
-                      stroke="rgba(255,255,255,0.7)"
-                      strokeWidth="1.5"
-                    />
-                  </g>
-                )}
-
-                {doorPanelType === 'kaca_panil_bawah' && (
-                  <g id="kacaPanilBawahDoor">
-                    {/* Upper Glass */}
-                    <rect
-                      x={originX + frameThickPx + 16}
-                      y={originY + frameThickPx + 16}
-                      width={doorW - 2 * frameThickPx - 32}
-                      height={(doorH - 2 * frameThickPx - 32) * 0.62}
-                      fill={glassStyle.fill}
-                      fillOpacity={glassStyle.opacity}
-                      stroke={palette.stroke}
-                      strokeWidth="1.5"
-                    />
-                    {/* Lower Spandrel Panel */}
-                    <rect
-                      x={originX + frameThickPx + 16}
-                      y={originY + frameThickPx + 16 + (doorH - 2 * frameThickPx - 32) * 0.64}
-                      width={doorW - 2 * frameThickPx - 32}
-                      height={(doorH - 2 * frameThickPx - 32) * 0.36}
-                      fill={palette.isDark ? '#2B323C' : '#FFFFFF'}
-                      stroke={palette.stroke}
-                      strokeWidth="1.5"
-                    />
-                    {[1, 2, 3].map((lIdx) => (
-                      <line
-                        key={`low-pan-${lIdx}`}
-                        x1={originX + frameThickPx + 20}
-                        y1={originY + frameThickPx + 16 + (doorH - 2 * frameThickPx - 32) * 0.64 + lIdx * 20}
-                        x2={originX + doorW - frameThickPx - 20}
-                        y2={originY + frameThickPx + 16 + (doorH - 2 * frameThickPx - 32) * 0.64 + lIdx * 20}
-                        stroke={palette.stroke}
-                        strokeWidth="1"
-                      />
-                    ))}
-                  </g>
-                )}
-
-                {doorPanelType === 'jalusi_louver' && (
-                  <g id="jalusiLouverDoor">
-                    <rect
-                      x={originX + frameThickPx + 16}
-                      y={originY + frameThickPx + 16}
-                      width={doorW - 2 * frameThickPx - 32}
-                      height={doorH - 2 * frameThickPx - 26}
-                      fill={palette.isDark ? '#232931' : '#F1F5F9'}
-                      stroke={palette.stroke}
-                      strokeWidth="1.5"
-                    />
-                    {Array.from({ length: 14 }).map((_, jIdx) => {
-                      const jy = originY + frameThickPx + 26 + jIdx * 24;
-                      return (
-                        <g key={`jalusi-${jIdx}`}>
-                          <line
-                            x1={originX + frameThickPx + 20}
-                            y1={jy}
-                            x2={originX + doorW - frameThickPx - 20}
-                            y2={jy}
-                            stroke={palette.stroke}
-                            strokeWidth="2.5"
-                          />
-                          <line
-                            x1={originX + frameThickPx + 20}
-                            y1={jy + 2}
-                            x2={originX + doorW - frameThickPx - 20}
-                            y2={jy + 2}
-                            stroke={palette.highlight}
-                            strokeWidth="1"
-                            opacity="0.6"
-                          />
-                        </g>
-                      );
-                    })}
-                  </g>
-                )}
-
-                {doorPanelType === 'acp_solid' && (
-                  <g id="acpSolidDoor">
-                    <rect
-                      x={originX + frameThickPx + 16}
-                      y={originY + frameThickPx + 16}
-                      width={doorW - 2 * frameThickPx - 32}
-                      height={doorH - 2 * frameThickPx - 26}
-                      fill={palette.isDark ? '#282E38' : '#F8FAFC'}
-                      stroke={palette.stroke}
-                      strokeWidth="2"
-                    />
-                    <rect
-                      x={originX + frameThickPx + 26}
-                      y={originY + frameThickPx + 26}
-                      width={doorW - 2 * frameThickPx - 52}
-                      height={doorH - 2 * frameThickPx - 46}
-                      fill="none"
-                      stroke={palette.innerStroke}
-                      strokeWidth="1"
-                      strokeDasharray="4 4"
-                    />
-                  </g>
-                )}
-
-                {doorPanelType === 'ornamen_kotak' && (
-                  <g id="ornamenKotakDoor">
-                    <rect
-                      x={originX + frameThickPx + 16}
-                      y={originY + frameThickPx + 16}
-                      width={doorW - 2 * frameThickPx - 32}
-                      height={doorH - 2 * frameThickPx - 26}
-                      fill={glassStyle.fill}
-                      fillOpacity={glassStyle.opacity}
-                      stroke={palette.stroke}
-                      strokeWidth="1.5"
-                    />
-                    <line
-                      x1={originX + doorW / 2}
-                      y1={originY + frameThickPx + 16}
-                      x2={originX + doorW / 2}
-                      y2={originY + doorH - frameThickPx - 10}
-                      stroke={palette.stroke}
-                      strokeWidth="2"
-                    />
-                    {[1, 2, 3].map((rIdx) => {
-                      const ry = originY + frameThickPx + 16 + (rIdx * (doorH - 2 * frameThickPx - 26)) / 4;
-                      return (
-                        <line
-                          key={`orn-r-${rIdx}`}
-                          x1={originX + frameThickPx + 16}
-                          y1={ry}
-                          x2={originX + doorW - frameThickPx - 16}
-                          y2={ry}
-                          stroke={palette.stroke}
-                          strokeWidth="2"
-                        />
-                      );
-                    })}
-                  </g>
+                {/* Door Inner Infill Panel (ACP Motif Kayu, Solid, Spandrel, Louver, or Glass) */}
+                {renderDoorInfill(
+                  originX + frameThickPx + 14,
+                  originY + frameThickPx + 14,
+                  doorW - 2 * frameThickPx - 28,
+                  doorH - 2 * frameThickPx - 20
                 )}
 
                 {/* Door Swing Dashed Lines (Diagonal from hinges on left to latch on right) */}
@@ -883,35 +1180,8 @@ export const FramePreviewSvg: React.FC<FramePreviewProps> = ({
                   />
                 </g>
 
-                {/* Lever Handle & Escutcheon Plate (Silver Chrome) */}
-                <g id="doorHandle" transform={`translate(${originX + doorW - frameThickPx - 16}, ${originY + doorH / 2 - 20})`}>
-                  {/* Escutcheon Plate */}
-                  <rect
-                    x="-6"
-                    y="0"
-                    width="14"
-                    height="42"
-                    rx="5"
-                    fill={palette.handleColor}
-                    stroke="#1E293B"
-                    strokeWidth="1.5"
-                  />
-                  {/* Keyhole cylinder */}
-                  <circle cx="1" cy="28" r="2.5" fill="#0F172A" />
-                  <polygon points="-0.5,28 2.5,28 2,34 0,34" fill="#0F172A" />
-                  {/* Lever Handle Bar */}
-                  <rect
-                    x="-18"
-                    y="8"
-                    width="20"
-                    height="6"
-                    rx="2"
-                    fill={palette.handleColor}
-                    stroke="#0F172A"
-                    strokeWidth="1.5"
-                  />
-                  <circle cx="1" cy="11" r="4.5" fill="#94A3B8" stroke="#0F172A" strokeWidth="1" />
-                </g>
+                {/* Configured Door Handle */}
+                {renderDoorHandle(originX, originY, doorW, doorH)}
 
                 {/* --- RIGHT DOUBLE WINDOWS (2 Jendela Casement) --- */}
                 {/* Outer Window Section Frame */}
@@ -925,61 +1195,93 @@ export const FramePreviewSvg: React.FC<FramePreviewProps> = ({
                   strokeWidth="2.5"
                 />
 
-                {/* 2 Casement Window Leaves (Daun Jendela) */}
-                {[0, 1].map((wIdx) => {
-                  const leafW = (winAreaW - 3 * frameThickPx) / 2;
+                {/* Window Leaves Rendering (Casement Buka-Tutup vs Kaca Mati) */}
+                {Array.from({ length: windowCount }).map((_, wIdx) => {
+                  const leafW = (winAreaW - (windowCount + 1) * frameThickPx) / windowCount;
                   const lx = originX + doorW + frameThickPx + wIdx * (leafW + frameThickPx);
                   const ly = originY + frameThickPx;
                   const lh = winAreaH - 2 * frameThickPx;
 
+                  const leafType = windowLeaves?.[wIdx] ?? 'open';
+                  const isOpen = leafType === 'open';
+
                   return (
                     <g key={`win-leaf-${wIdx}`}>
-                      {/* Window Sash Frame */}
-                      <rect
-                        x={lx}
-                        y={ly}
-                        width={leafW}
-                        height={lh}
-                        fill={viewMode === 'render3d' ? 'url(#frameGrad)' : palette.frameFill}
-                        stroke={palette.innerStroke}
-                        strokeWidth="2"
-                      />
+                      {/* Window Sash Frame (only for opening casement leaf) */}
+                      {isOpen ? (
+                        <rect
+                          x={lx}
+                          y={ly}
+                          width={leafW}
+                          height={lh}
+                          fill={viewMode === 'render3d' ? 'url(#frameGrad)' : palette.frameFill}
+                          stroke={palette.innerStroke}
+                          strokeWidth="2"
+                        />
+                      ) : null}
 
                       {/* Glass Panel */}
                       <rect
-                        x={lx + frameThickPx * 0.7}
-                        y={ly + frameThickPx * 0.7}
-                        width={leafW - 1.4 * frameThickPx}
-                        height={lh - 1.4 * frameThickPx}
+                        x={isOpen ? lx + frameThickPx * 0.7 : lx}
+                        y={isOpen ? ly + frameThickPx * 0.7 : ly}
+                        width={isOpen ? leafW - 1.4 * frameThickPx : leafW}
+                        height={isOpen ? lh - 1.4 * frameThickPx : lh}
                         fill={glassStyle.fill}
                         fillOpacity={glassStyle.opacity}
                         stroke={palette.stroke}
                         strokeWidth="1.2"
                       />
 
-                      {/* Triangular Swing Dashed Lines (Awning/Casement opening like reference drawing) */}
-                      <polygon
-                        points={`${lx + leafW / 2},${ly + 4} ${lx + 6},${ly + lh - 6} ${lx + leafW - 6},${ly + lh - 6}`}
-                        fill="none"
-                        stroke="#64748B"
-                        strokeWidth="1"
-                        strokeDasharray="5 4"
-                      />
+                      {/* Opening Swing Lines & Hardware for Buka-Tutup leaf */}
+                      {isOpen ? (
+                        <>
+                          {/* Triangular Swing Lines */}
+                          <polygon
+                            points={`${lx + leafW / 2},${ly + 6} ${lx + 8},${ly + lh - 8} ${lx + leafW - 8},${ly + lh - 8}`}
+                            fill="none"
+                            stroke="#64748B"
+                            strokeWidth="1"
+                            strokeDasharray="5 4"
+                          />
+                          {/* Rambuncis / Lock Handle */}
+                          <rect
+                            x={lx + leafW - 12}
+                            y={ly + lh / 2 - 10}
+                            width="5"
+                            height="20"
+                            rx="1.5"
+                            fill="#CBD5E1"
+                            stroke="#1E293B"
+                            strokeWidth="0.8"
+                          />
+                        </>
+                      ) : (
+                        /* Fixed Glass "KACA MATI" CAD Indicator */
+                        <g>
+                          {viewMode === 'cad' && (
+                            <text
+                              x={lx + leafW / 2}
+                              y={ly + lh / 2}
+                              fontSize="8.5"
+                              fontFamily="sans-serif"
+                              fontWeight="bold"
+                              fill="#94A3B8"
+                              textAnchor="middle"
+                            >
+                              KACA MATI
+                            </text>
+                          )}
+                        </g>
+                      )}
 
-                      {/* Glass Light Reflection Glare (2 parallel diagonal lines) */}
+                      {/* Glass Light Reflection Glare */}
                       {glassStyle.glare && (
                         <g stroke="rgba(255,255,255,0.7)" strokeWidth="1.5" strokeLinecap="round">
                           <line
-                            x1={lx + leafW * 0.4}
-                            y1={ly + lh * 0.65}
-                            x2={lx + leafW * 0.75}
-                            y2={ly + lh * 0.3}
-                          />
-                          <line
-                            x1={lx + leafW * 0.48}
+                            x1={lx + leafW * 0.3}
                             y1={ly + lh * 0.7}
-                            x2={lx + leafW * 0.82}
-                            y2={ly + lh * 0.36}
+                            x2={lx + leafW * 0.75}
+                            y2={ly + lh * 0.25}
                           />
                         </g>
                       )}
@@ -1016,172 +1318,74 @@ export const FramePreviewSvg: React.FC<FramePreviewProps> = ({
                     const py = originY + frameThickPx + hIdx * (ph + frameThickPx);
 
                     const isDoorLeaf = type.includes('pintu');
+                    const leafType = windowLeaves?.[vIdx] ?? 'open';
+                    const isOpenWindow = leafType === 'open';
 
                     return (
                       <g key={`pnl-${hIdx}-${vIdx}`}>
-                        {/* Panel Background (Glass or Door Panil) */}
-                        {isDoorLeaf && (doorPanelType === 'panil_horizontal' || !doorPanelType || doorPanelType.includes('spandrel') || doorPanelType.includes('horizontal')) ? (
-                          <g>
-                            <rect
-                              x={px}
-                              y={py}
-                              width={pw}
-                              height={ph}
-                              fill={viewMode === 'render3d' ? 'url(#frameGrad)' : palette.panelFill}
-                              stroke={palette.innerStroke}
-                              strokeWidth="1.8"
-                            />
-                            {/* Horizontal Panil Slats */}
-                            {Array.from({ length: 6 }).map((_, sIdx) => {
-                              const sh = (ph - 30) / 6;
-                              return (
-                                <rect
-                                  key={`slat-${sIdx}`}
-                                  x={px + 8}
-                                  y={py + 10 + sIdx * (sh + 2)}
-                                  width={pw - 16}
-                                  height={sh}
-                                  fill={palette.isDark ? '#2B323C' : '#FFFFFF'}
-                                  stroke={palette.stroke}
-                                  strokeWidth="1"
-                                />
-                              );
-                            })}
-                          </g>
-                        ) : isDoorLeaf && doorPanelType === 'jalusi_louver' ? (
-                          <g>
-                            <rect
-                              x={px}
-                              y={py}
-                              width={pw}
-                              height={ph}
-                              fill={palette.isDark ? '#232931' : '#F1F5F9'}
-                              stroke={palette.innerStroke}
-                              strokeWidth="1.8"
-                            />
-                            {Array.from({ length: 12 }).map((_, jIdx) => {
-                              const jy = py + 15 + jIdx * ((ph - 30) / 12);
-                              return (
-                                <line
-                                  key={`jal-${jIdx}`}
-                                  x1={px + 6}
-                                  y1={jy}
-                                  x2={px + pw - 6}
-                                  y2={jy}
-                                  stroke={palette.stroke}
-                                  strokeWidth="2.5"
-                                />
-                              );
-                            })}
-                          </g>
-                        ) : isDoorLeaf && doorPanelType === 'acp_solid' ? (
-                          <g>
-                            <rect
-                              x={px}
-                              y={py}
-                              width={pw}
-                              height={ph}
-                              fill={palette.isDark ? '#334155' : '#E2E8F0'}
-                              stroke={palette.stroke}
-                              strokeWidth="1.8"
-                            />
-                            <rect
-                              x={px + 8}
-                              y={py + 8}
-                              width={pw - 16}
-                              height={ph - 16}
-                              fill="none"
-                              stroke={palette.innerStroke}
-                              strokeWidth="1"
-                              strokeDasharray="4 4"
-                            />
-                          </g>
-                        ) : isDoorLeaf && doorPanelType === 'kaca_panil_bawah' ? (
-                          <g>
-                            {/* Top 65% Glass */}
-                            <rect
-                              x={px}
-                              y={py}
-                              width={pw}
-                              height={ph * 0.62}
-                              fill={glassStyle.fill}
-                              fillOpacity={glassStyle.opacity}
-                              stroke={palette.innerStroke}
-                              strokeWidth="1.5"
-                            />
-                            {/* Bottom 35% Panel */}
-                            <rect
-                              x={px}
-                              y={py + ph * 0.64}
-                              width={pw}
-                              height={ph * 0.36}
-                              fill={palette.isDark ? '#2B323C' : '#FFFFFF'}
-                              stroke={palette.stroke}
-                              strokeWidth="1.5"
-                            />
-                            {[1, 2, 3].map((lIdx) => (
-                              <line
-                                key={`low-slat-${lIdx}`}
-                                x1={px + 6}
-                                y1={py + ph * 0.64 + lIdx * 18}
-                                x2={px + pw - 6}
-                                y2={py + ph * 0.64 + lIdx * 18}
-                                stroke={palette.stroke}
-                                strokeWidth="1"
-                              />
-                            ))}
-                          </g>
-                        ) : isDoorLeaf && doorPanelType === 'ornamen_kotak' ? (
-                          <g>
-                            <rect
-                              x={px}
-                              y={py}
-                              width={pw}
-                              height={ph}
-                              fill={glassStyle.fill}
-                              fillOpacity={glassStyle.opacity}
-                              stroke={palette.innerStroke}
-                              strokeWidth="1.5"
-                            />
-                            {/* Grid Muntin Lines */}
-                            <line x1={px + pw * 0.33} y1={py} x2={px + pw * 0.33} y2={py + ph} stroke={palette.stroke} strokeWidth="1.5" />
-                            <line x1={px + pw * 0.66} y1={py} x2={px + pw * 0.66} y2={py + ph} stroke={palette.stroke} strokeWidth="1.5" />
-                            <line x1={px} y1={py + ph * 0.25} x2={px + pw} y2={py + ph * 0.25} stroke={palette.stroke} strokeWidth="1.5" />
-                            <line x1={px} y1={py + ph * 0.5} x2={px + pw} y2={py + ph * 0.5} stroke={palette.stroke} strokeWidth="1.5" />
-                            <line x1={px} y1={py + ph * 0.75} x2={px + pw} y2={py + ph * 0.75} stroke={palette.stroke} strokeWidth="1.5" />
-                          </g>
+                        {/* Panel Background (Glass or Door Infill) */}
+                        {isDoorLeaf ? (
+                          renderDoorInfill(px, py, pw, ph)
                         ) : (
                           <g>
                             {/* Glass Panel */}
                             <rect
-                              x={px}
-                              y={py}
-                              width={pw}
-                              height={ph}
+                              x={isOpenWindow && type === 'kusen_jendela_casement' ? px + 4 : px}
+                              y={isOpenWindow && type === 'kusen_jendela_casement' ? py + 4 : py}
+                              width={isOpenWindow && type === 'kusen_jendela_casement' ? pw - 8 : pw}
+                              height={isOpenWindow && type === 'kusen_jendela_casement' ? ph - 8 : ph}
                               fill={glassStyle.fill}
                               fillOpacity={glassStyle.opacity}
                               stroke={palette.innerStroke}
                               strokeWidth="1.5"
                             />
-                            {/* Casement Inner Sash Frame */}
+                            {/* Casement Inner Sash Frame for Buka-Tutup */}
                             {type === 'kusen_jendela_casement' && (
                               <>
-                                <rect
-                                  x={px + 4}
-                                  y={py + 4}
-                                  width={pw - 8}
-                                  height={ph - 8}
-                                  fill="none"
-                                  stroke={palette.stroke}
-                                  strokeWidth="1.5"
-                                />
-                                <polygon
-                                  points={`${px + pw / 2},${py + 8} ${px + 8},${py + ph - 8} ${px + pw - 8},${py + ph - 8}`}
-                                  fill="none"
-                                  stroke="#64748B"
-                                  strokeWidth="1"
-                                  strokeDasharray="4 3"
-                                />
+                                {isOpenWindow ? (
+                                  <>
+                                    <rect
+                                      x={px + 4}
+                                      y={py + 4}
+                                      width={pw - 8}
+                                      height={ph - 8}
+                                      fill="none"
+                                      stroke={palette.stroke}
+                                      strokeWidth="1.8"
+                                    />
+                                    <polygon
+                                      points={`${px + pw / 2},${py + 10} ${px + 10},${py + ph - 10} ${px + pw - 10},${py + ph - 10}`}
+                                      fill="none"
+                                      stroke="#64748B"
+                                      strokeWidth="1"
+                                      strokeDasharray="4 3"
+                                    />
+                                    <rect
+                                      x={px + pw - 12}
+                                      y={py + ph / 2 - 8}
+                                      width="4"
+                                      height="16"
+                                      rx="1"
+                                      fill="#CBD5E1"
+                                      stroke="#1E293B"
+                                      strokeWidth="0.8"
+                                    />
+                                  </>
+                                ) : (
+                                  viewMode === 'cad' && (
+                                    <text
+                                      x={px + pw / 2}
+                                      y={py + ph / 2}
+                                      fontSize="8"
+                                      fontFamily="sans-serif"
+                                      fontWeight="bold"
+                                      fill="#94A3B8"
+                                      textAnchor="middle"
+                                    >
+                                      KACA MATI
+                                    </text>
+                                  )
+                                )}
                               </>
                             )}
                             {/* Glare Reflection */}
@@ -1199,19 +1403,15 @@ export const FramePreviewSvg: React.FC<FramePreviewProps> = ({
                           </g>
                         )}
 
-                        {/* Door Swing Dashed Lines & Handle */}
+                        {/* Door Swing Dashed Lines & Configured Handle */}
                         {isDoorLeaf && (
                           <>
                             <g stroke="#64748B" strokeWidth="1" strokeDasharray="5 4" fill="none">
                               <line x1={px} y1={py + 10} x2={px + pw} y2={py + ph / 2} />
                               <line x1={px} y1={py + ph - 10} x2={px + pw} y2={py + ph / 2} />
                             </g>
-                            {/* Door Lever Handle */}
-                            <g transform={`translate(${px + pw - 14}, ${py + ph / 2 - 16})`}>
-                              <rect x="-4" y="0" width="10" height="32" rx="3" fill={palette.handleColor} stroke="#0F172A" strokeWidth="1" />
-                              <circle cx="1" cy="8" r="3" fill="#94A3B8" />
-                              <rect x="-14" y="6" width="15" height="4.5" rx="1.5" fill={palette.handleColor} stroke="#0F172A" strokeWidth="1" />
-                            </g>
+                            {/* Render Configured Handle on this Door Leaf */}
+                            {renderDoorHandle(px, py, pw, ph, vertPanels > 1 && vIdx === 0 && handlePosition === 'center_pair')}
                           </>
                         )}
                       </g>
