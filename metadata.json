@@ -1,0 +1,6 @@
+{
+  "name": "KusenPro - Kalkulator RAB & Manajemen Alumunium",
+  "description": "Aplikasi kalkulator RAB kusen, pintu, dan jendela alumunium otomatis, estimasi waktu pengerjaan, cetak PDF, manajemen stok, dan sinkronisasi cloud.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

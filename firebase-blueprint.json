@@ -1,0 +1,81 @@
+{
+  "entities": {
+    "Project": {
+      "title": "Project",
+      "description": "Calculated project RAB with items, labor costs, timeline, and client details",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string", "maxLength": 128 },
+        "clientName": { "type": "string", "maxLength": 100 },
+        "clientPhone": { "type": "string", "maxLength": 30 },
+        "clientAddress": { "type": "string", "maxLength": 256 },
+        "status": { "type": "string", "enum": ["draft", "quoted", "approved", "in_progress", "completed"] },
+        "totalAmount": { "type": "number" },
+        "totalMaterialCost": { "type": "number" },
+        "totalLaborCost": { "type": "number" },
+        "markupPercentage": { "type": "number" },
+        "estimatedDays": { "type": "number" },
+        "workersCount": { "type": "number" },
+        "items": { "type": "array" },
+        "notes": { "type": "string", "maxLength": 1000 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["userId", "title", "clientName", "status", "totalAmount"]
+    },
+    "InventoryItem": {
+      "title": "InventoryItem",
+      "description": "Raw material stock or price catalog item for aluminum profiles, glass, and hardware",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "itemCode": { "type": "string", "maxLength": 50 },
+        "name": { "type": "string", "maxLength": 100 },
+        "category": { "type": "string", "enum": ["aluminum", "glass", "hardware", "accessories", "labor_rate"] },
+        "brand": { "type": "string", "maxLength": 50 },
+        "color": { "type": "string", "maxLength": 50 },
+        "spec": { "type": "string", "maxLength": 50 },
+        "unit": { "type": "string", "enum": ["batang", "m2", "pcs", "meter", "set", "m1"] },
+        "pricePerUnit": { "type": "number" },
+        "stockQuantity": { "type": "number" },
+        "minStockThreshold": { "type": "number" },
+        "updatedAt": { "type": "string" },
+        "updatedBy": { "type": "string" }
+      },
+      "required": ["name", "category", "unit", "pricePerUnit", "stockQuantity"]
+    },
+    "PriceHistory": {
+      "title": "PriceHistory",
+      "description": "Log of price updates for catalog transparency",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "itemId": { "type": "string" },
+        "itemName": { "type": "string" },
+        "oldPrice": { "type": "number" },
+        "newPrice": { "type": "number" },
+        "changedAt": { "type": "string" },
+        "changedBy": { "type": "string" }
+      },
+      "required": ["itemId", "itemName", "oldPrice", "newPrice", "changedAt"]
+    }
+  },
+  "firestore": {
+    "/projects/{projectId}": {
+      "schema": "Project",
+      "description": "User projects and RAB calculations"
+    },
+    "/inventory/{itemId}": {
+      "schema": "InventoryItem",
+      "description": "Master material inventory and price list"
+    },
+    "/priceHistory/{historyId}": {
+      "schema": "PriceHistory",
+      "description": "Material price change log"
+    }
+  }
+}
